@@ -1,0 +1,4054 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- author: Thomas Tempelmann, tempelmann@gmail.com; website: http://apps.tempel.org/iBored -->
+
+<templates>
+
+	<code type="include" id="context-support">
+
+		class Extent
+			public sub Constructor (start as Int64, length as Int64)
+				me.start = start
+				me.length = length
+			end sub
+			public start as Int64
+			public length as Int64
+		end class
+
+		sub StoreAsProp (extends extents() as Extent, name as String)
+			dim s as String
+			for each e as Extent in extents
+				if LenB(s) > 0 then s = s + ","
+				s = s + IntStr(e.start)+":"+IntStr(e.length)
+			next
+			PropStr(name) = s
+		end sub
+		
+	</code>
+
+	<macro id="efi-test"> ElemInt("part1.type") = 238 and Data_int32be(&amp;h1be) = &amp;h00FEFFFF and Data_int32be(&amp;h1c2) = &amp;hEEFEFFFF </macro>
+	
+	<namespace id="hfs" label="HFS" >
+
+		<endianness type="big-endian">
+
+			<view-formatter id="HFSDateNoGMT">
+				<code type="str-function">
+					dim n as Int64 = Data_uint32be(0)
+					if n = 0 then
+						return "never"
+					end
+					dim d, m, y as Integer
+					dim h as Double
+					h = GetDateFromMacSeconds (n, y, m, d)
+					return IntStr(y)+"-"+IntStr0(m,2)+"-"+IntStr0(d,2)+" "+IntStr0(h,2)+":"+IntStr0((h-floor(h))*60,2)+":"+IntStr0((h*60-floor(h*60))*60,2)
+				</code>
+			</view-formatter>
+
+			<structure id="Point" label="Point">
+				<element id="v" label="v" type="Int16BE" />
+				<element id="h" label="h" type="Int16BE" />
+				<summary> <code type="str-expr"> ElemStr("v")+","+ElemStr("v") </code> </summary>
+			</structure>
+			<structure id="Rect" label="Rect">
+				<element id="top" label="top" type="Int16BE" />
+				<element id="left" label="left" type="Int16BE" />
+				<element id="bottom" label="bottom" type="Int16BE" />
+				<element id="right" label="right" type="Int16BE" />
+				<summary> <code type="str-expr"> ElemStr("top")+","+ElemStr("left")+ElemStr("bottom")+","+ElemStr("right") </code> </summary>
+			</structure>
+			<structure id="FInfo" label="FInfo">
+				<element id="fdType" label="fdType" type="char" count="4" />
+				<element id="fdCreator" label="fdCreator" type="char" count="4" />
+				<element id="fdFlags" label="fdFlags" type="UInt16BE" />
+				<element id="fdLocation" label="fdLocation" type="struct" ref="Point" />
+				<element id="fdFldr" label="fdFldr" type="Int16BE" />
+				<summary> <code type="str-expr"> ElemStr("fdType")+","+ElemStr("fdCreator") </code> </summary>
+			</structure>
+			<structure id="FXInfo" label="FXInfo">
+				<element id="fdIconID" label="fdIconID" type="Int16BE" />
+				<element id="fdReserved" label="fdReserved" type="SInt16" count="3" />
+				<element id="fdScript" label="fdScript" type="SInt8" />
+				<element id="fdXFlags" label="fdXFlags" type="SInt8" />
+				<element id="fdComment" label="fdComment" type="Int16BE" />
+				<element id="fdPutAway" label="fdPutAway" type="SInt32BE" />
+			</structure>
+			<structure id="DInfo" label="DInfo">
+				<element id="frRect" label="frRect" type="struct" ref="Rect" />
+				<element id="frFlags" label="frFlags" type="UInt16BE" />
+				<element id="frLocation" label="frLocation" type="struct" ref="Point" />
+				<element id="frView" label="frView" type="Int16BE" />
+			</structure>
+			<structure id="DXInfo" label="DXInfo">
+				<element id="frScroll" label="frScroll" type="struct" ref="Point" />
+				<element id="frOpenChain" label="frOpenChain" type="SInt32BE" />
+				<element id="frScript" label="frScript" type="SInt8" />
+				<element id="frXFlags" label="frXFlags" type="SInt8" />
+				<element id="frComment" label="frComment" type="Int16BE" />
+				<element id="frPutAway" label="frPutAway" type="SInt32BE" />
+			</structure>
+			
+			<structure id="ExtentDesc" label="ExtentDesc"> <!-- this is actually not HFS+ but old HFS -->
+				<element id="startBlock" label="startBlock" type="UInt16BE" />
+				<element id="numBlocks" label="numBlocks" type="UInt16BE" />
+				<summary> <code type="str-expr"> "{" + ElemStr("startBlock")+","+ElemStr("numBlocks") + "}" </code> </summary>
+			</structure>
+			<structure id="ExtentRec" label="ExtentRec"> <!-- this is actually not HFS+ but old HFS -->
+				<element id="ext" label="extents" type="struct" ref="ExtentDesc" count="3" view="collapsed" />
+				<summary> <code type="str-function">
+					dim s as String
+					dim ofs as Integer = CurrentBlockOffset
+					for i as Integer = 0 to 2
+						SetStruct ("ExtentDesc", ofs + i * 4)
+						dim startBlk as Integer = ElemInt("startBlock")
+						dim blkCount as Integer = ElemInt("numBlocks")
+						if blkCount = 0 then exit
+						if s &lt;&gt; "" then s = s + ","
+						s = s + "{" + IntStr(startBlk)+","+IntStr(blkCount) + "}"
+					next
+					return s
+				</code> </summary>
+			</structure>
+			<structure id="CatalogDirRec" label="CatalogDirRec"> <!-- this is actually not HFS+ but old HFS -->
+				<element id="recordType" label="recordType" type="UInt8" />
+				<element id="reserved" label="reserved" type="UInt8" />
+				<element id="flags" label="flags" type="UInt16BE" />
+				<element id="valence" label="valence" type="UInt16BE" />
+				<element id="dirID" label="dirID" type="SInt32BE" />
+				<element id="creationDate" label="creationDate" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="modificationDate" label="modificationDate" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="backupDate" label="backupDate" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="dInfo" label="dInfo" type="struct" ref="DInfo" />
+				<element id="dXInfo" label="dXInfo" type="struct" ref="DXInfo" />
+				<element id="reserved2BE" label="reserved2BE" type="UInt32" count="4" />
+			</structure>
+			<structure id="CatalogFileRec" label="CatalogFileRec"> <!-- this is actually not HFS+ but old HFS -->
+				<element id="recordType" label="recordType" type="UInt8" />
+				<element id="reserved" label="reserved" type="UInt8" />
+				<element id="flags" label="flags" type="UInt8" />
+				<element id="fileType" label="fileType" type="UInt8" />
+				<element id="finderInfo" label="finderInfo" type="struct" ref="FInfo" />
+				<element id="fileID" label="fileID" type="SInt32BE" />
+				<element id="dataStart" label="dataStart" type="UInt16BE" />
+				<element id="dataLogicalLen" label="dataLogicalLen" type="UInt32BE" />
+				<element id="dataPhysicalLen" label="dataPhysicalLen" type="UInt32BE" />
+				<element id="resStart" label="resStart" type="UInt16BE" />
+				<element id="resLogicalLen" label="resLogicalLen" type="UInt32BE" />
+				<element id="resPhysicalLen" label="resPhysicalLen" type="UInt32BE" />
+				<element id="creationDate" label="creationDate" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="modificationDate" label="modificationDate" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="backupDate" label="backupDate" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="finderXInfo" label="finderXInfo" type="struct" ref="FXInfo" />
+				<element id="clumpSize" label="clumpSize" type="UInt16BE" />
+				<element id="dataExtent" label="dataExtent" type="struct" ref="ExtentRec" view="collapsed" />
+				<element id="resExtent" label="resExtent" type="struct" ref="ExtentRec" view="collapsed" />
+				<element id="reserved2BE" label="reserved2BE" type="UInt32" />
+			</structure>
+			<structure id="CatalogThreadRec" label="CatalogThreadRec"> <!-- this is actually not HFS+ but old HFS -->
+				<element id="recordType" label="recordType" type="UInt8" />
+				<element id="reserved" label="reserved" type="UInt8" />
+				<element id="reserved2BE" label="reserved2BE" type="UInt32" count="2" />
+				<element id="parID" label="parID" type="SInt32BE" />
+				<element id="name" label="name" type="pstring" count="32" />
+			</structure>
+			<structure id="HFSMasterDirectoryBlock" label="MasterDirectoryBlock"> <!-- this is actually not HFS+ but old HFS -->
+				<element id="drSigWord" label="drSigWord" type="char" count="2" />
+				<element id="drCrDate" label="drCrDate" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="drLsMod" label="drLsMod" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="drAtrb" label="drAtrb" type="UInt16BE" />
+				<element id="drNmFls" label="drNmFls" type="UInt16BE" />
+				<element id="drVBMSt" label="drVBMSt" type="UInt16BE" />
+				<element id="drAllocPtr" label="drAllocPtr" type="UInt16BE" />
+				<element id="drNmAlBlks" label="drNmAlBlks" type="UInt16BE" />
+				<element id="drAlBlkSiz" label="drAlBlkSiz" type="UInt32BE" />
+				<element id="drClpSiz" label="drClpSiz" type="UInt32BE" />
+				<element id="drAlBlSt" label="drAlBlSt" type="UInt16BE" />
+				<element id="drNxtCNID" label="drNxtCNID" type="UInt32BE" />
+				<element id="drFreeBks" label="drFreeBks" type="UInt16BE" />
+				<element id="drVN" label="drVN" type="char" count="28" />
+				<element id="drVolBkUp" label="drVolBkUp" type="UInt32BE" />
+				<element id="drVSeqNum" label="drVSeqNum" type="UInt16BE" />
+				<element id="drWrCnt" label="drWrCnt" type="UInt32BE" />
+				<element id="drXTClpSiz" label="drXTClpSiz" type="UInt32BE" />
+				<element id="drCTClpSiz" label="drCTClpSiz" type="UInt32BE" />
+				<element id="drNmRtDirs" label="drNmRtDirs" type="UInt16BE" />
+				<element id="drFilCnt" label="drFilCnt" type="UInt32BE" />
+				<element id="drDirCnt" label="drDirCnt" type="UInt32BE" />
+				<element id="drFndrInfo" label="drFndrInfo" type="UInt32BE" count="8" />
+				<element id="drEmbedSigWord" label="drEmbedSigWord" type="char" count="2" />
+				<element id="drEmbedExtent" label="drEmbedExtent" type="struct" ref="ExtentDesc" view="collapsed" />
+				<element id="drXTFlSize" label="drXTFlSize" type="UInt32BE" />
+				<element id="drXTExtRec" label="drXTExtRec" type="struct" ref="ExtentRec" view="collapsed" />
+				<element id="drCTFlSize" label="drCTFlSize" type="UInt32BE" />
+				<element id="drCTExtRec" label="drCTExtRec" type="struct" ref="ExtentRec" view="collapsed" />
+			</structure>
+
+			<context id="volHdr" label="Volume Header" forTypes="hfs_volHdr">
+			</context>
+
+			<context id="volume" label="HFS Volume" forTypes="partition,">
+				<validation>
+					<code type="bool-function">
+						dim valid1, valid2, isWrapper as Boolean
+						dim blkSize as Integer
+						SetTemplate("HFSMasterDirectoryBlock")
+						Container_SetBlockSize 512
+						// check main volume header
+						valid1 = Container_ReadBlock(2)
+						valid1 = valid1 and IsValidTemplate()
+						if valid1 then
+							if ElemStr("drEmbedSigWord") = "H+" then
+								isWrapper = true
+								PropInt("hfs-isWrapper") = 1
+							end
+							PropStoreBlock("volHeader")
+							PropInt("hfs-volHdr1") = CurrentBlockNumber
+							PropInt("hfs-volBlkStart") = ElemInt("drAlBlSt")
+							PropInt("hfs-volBlkSize") = ElemInt("drAlBlkSiz")
+							PropInt("hfs-volBlkCnt") = ElemInt("drNmAlBlks")
+							PropStr("hfs-signature") = ElemStr("drSigWord")
+							PropInt("hfs-itemcount") = ElemInt("drFilCnt")
+							PropStr("hfs-created") = ElemStr("drCrDate")
+							PropStr("hfs-modified") = ElemStr("drLsMod")
+							PropStr("hfs-volName") = ElemStr("drVN")
+						end
+						// check reserve volume header
+						valid2 = Container_ReadBlock(Container_BlockCount-2)
+						valid2 = valid2 and IsValidTemplate()
+						if valid2 then
+							if not valid1 then
+								if ElemStr("drEmbedSigWord") = "H+" then
+									isWrapper = true
+									PropInt("hfs-isWrapper") = 1
+								end
+								PropStoreBlock("volHeader")
+								PropInt("hfs-volBlkStart") = ElemInt("drAlBlSt")
+								PropInt("hfs-volBlkSize") = ElemInt("drAlBlkSiz")
+								PropInt("hfs-volBlkCnt") = ElemInt("drNmAlBlks")
+							end
+							PropInt("hfs-volHdr2") = CurrentBlockNumber
+							PropStr("hfs-signature2") = ElemStr("drSigWord")
+							PropInt("hfs-itemcount2") = ElemInt("drFilCnt")
+							PropStr("hfs-created2") = ElemStr("drCrDate")
+							PropStr("hfs-modified2") = ElemStr("drLsMod")
+							PropStr("hfs-volName2") = ElemStr("drVN")
+						end
+						return valid1 or valid2
+					</code>
+				</validation>
+				<child-context type="hfs_volHdr" label="Main Volume Header">
+					<code type="bool-function" include="context-support">
+						if HasProp("hfs-volHdr1") then
+							dim extents() as Extent
+							extents.Append new Extent (PropInt("hfs-volHdr1")*512, 512)
+							extents.StoreAsProp("extents")
+							return true
+						end
+					</code>
+					<new-container extentsProp="extents" />
+					<display-column title="SIG" valueProp="hfs-signature" />
+					<display-column title="FOD" valueProp="hfs-itemcount" />
+					<display-column title="VCD" valueProp="hfs-created" />
+					<display-column title="VMD" valueProp="hfs-modified" />
+					<display-column title="VN" valueProp="hfs-volName" />
+				</child-context>
+				<child-context type="hfs_volHdr" label="Backup Volume Header">
+					<code type="bool-function" include="context-support">
+						if HasProp("hfs-volHdr2") then
+							dim extents() as Extent
+							extents.Append new Extent (PropInt("hfs-volHdr2")*512, 512)
+							extents.StoreAsProp("extents")
+							return true
+						end
+					</code>
+					<new-container extentsProp="extents" />
+					<display-column title="SIG" valueProp="hfs-signature2" />
+					<display-column title="FOD" valueProp="hfs-itemcount2" />
+					<display-column title="VCD" valueProp="hfs-created2" />
+					<display-column title="VMD" valueProp="hfs-modified2" />
+					<display-column title="VN" valueProp="hfs-volName2" />
+				</child-context>
+				<child-context type="hfsWrapper" label="Embedded HFS+">
+					<code type="bool-function" include="context-support">
+						if HasProp("hfs-isWrapper") then
+							// This is a HFS+ wrapper - locate the embedded volume
+							if PropRetrieveBlock("volHeader") then
+								SetTemplate("HFSMasterDirectoryBlock",0)
+								dim extents() as Extent
+								dim extStart, extLength as Int64
+								extStart = ElemInt("drEmbedExtent.startBlock") * ElemInt("drAlBlkSiz") // start within volume's allocation area
+								extStart = extStart + ElemInt("drAlBlSt") * 512 // add offset to volume's allocation area
+								extLength = ElemInt("drEmbedExtent.numBlocks") * ElemInt("drAlBlkSiz") // the size of the embedded volume
+								extents.Append new Extent (extStart, extLength)
+								extents.StoreAsProp("extents")
+								return true
+							end
+						end
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="512" />
+				</child-context>
+				<child-context type="hfs_clusterArea" label="Cluster Area">
+					<code type="bool-function" include="context-support">
+						dim extents() as Extent
+						dim bytesPerCluster as Int64 = PropInt("hfs-volBlkSize")
+						extents.Append new Extent (0, PropInt("hfs-volBlkCnt") * bytesPerCluster)
+						extents.StoreAsProp("extents")
+						return true
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="hfs-volBlkSize" />
+					<copy-property name="volHeader" />
+				</child-context>
+			</context>
+
+			<template id="HFSMasterDirectoryBlock">
+				<structure ref="HFSMasterDirectoryBlock" />
+				<match kind="content">
+					<code type="bool-function">
+						dim first2Bytes as UInt16 = Data_uint16be(0)
+						if first2Bytes = &amp;h4244 then // "BD"
+							// check if alloc block size is a multiple of 512
+							dim blockSize as UInt32 = ElemInt("drAlBlkSiz")
+							dim sizePer512 as UInt32 = blockSize / 512
+							if sizePer512 * 512 = blockSize then
+								// check if clump size is a multiple of alloc blk size
+								dim clumpSize as UInt32 = ElemInt("drClpSiz")
+								dim clumpBlks as UInt32 = clumpSize / blockSize
+								return clumpBlks * blockSize = clumpSize
+							end
+						end
+					</code>
+				</match>
+			</template>
+			
+		</endianness>
+
+	</namespace>
+
+	<namespace id="hfsplus" label="HFS+" >
+
+		<endianness type="big-endian">
+
+			<view-formatter id="HFSDate">
+				<code type="str-function">
+					dim n as Int64 = Data_uint32be(0)
+					if n = 0 then
+						return "never"
+					end
+					n = n + GMTOffsetInHours * 3600
+					dim d, m, y as Integer
+					dim h as Double
+					h = GetDateFromMacSeconds (n, y, m, d)
+					return IntStr(y)+"-"+IntStr0(m,2)+"-"+IntStr0(d,2)+" "+IntStr0(h,2)+":"+IntStr0((h-floor(h))*60,2)+":"+IntStr0((h*60-floor(h*60))*60,2)
+				</code>
+			</view-formatter>
+
+			<view-formatter id="HFSDateNoGMT">
+				<code type="str-function">
+					dim n as Int64 = Data_uint32be(0)
+					if n = 0 then
+						return "never"
+					end
+					dim d, m, y as Integer
+					dim h as Double
+					h = GetDateFromMacSeconds (n, y, m, d)
+					return IntStr(y)+"-"+IntStr0(m,2)+"-"+IntStr0(d,2)+" "+IntStr0(h,2)+":"+IntStr0((h-floor(h))*60,2)+":"+IntStr0((h*60-floor(h*60))*60,2)
+				</code>
+			</view-formatter>
+
+			<structure id="Point" label="Point">
+				<element id="v" label="v" type="Int16BE" />
+				<element id="h" label="h" type="Int16BE" />
+				<summary> <code type="str-expr"> ElemStr("v")+","+ElemStr("v") </code> </summary>
+			</structure>
+			<structure id="Rect" label="Rect">
+				<element id="top" label="top" type="Int16BE" />
+				<element id="left" label="left" type="Int16BE" />
+				<element id="bottom" label="bottom" type="Int16BE" />
+				<element id="right" label="right" type="Int16BE" />
+				<summary> <code type="str-expr"> ElemStr("top")+","+ElemStr("left")+ElemStr("bottom")+","+ElemStr("right") </code> </summary>
+			</structure>
+			<structure id="FInfo" label="FInfo">
+				<element id="fdType" label="fdType" type="char" count="4" />
+				<element id="fdCreator" label="fdCreator" type="char" count="4" />
+				<element id="fdFlags" label="fdFlags" type="UInt16BE" />
+				<element id="fdLocation" label="fdLocation" type="struct" ref="Point" />
+				<element id="fdFldr" label="fdFldr" type="Int16BE" />
+				<summary> <code type="str-expr"> ElemStr("fdType")+","+ElemStr("fdCreator") </code> </summary>
+			</structure>
+			<structure id="FXInfo" label="FXInfo">
+				<element id="fdIconID" label="fdIconID" type="Int16BE" />
+				<element id="fdReserved" label="fdReserved" type="SInt16" count="3" />
+				<element id="fdScript" label="fdScript" type="SInt8" />
+				<element id="fdXFlags" label="fdXFlags" type="SInt8" />
+				<element id="fdComment" label="fdComment" type="Int16BE" />
+				<element id="fdPutAway" label="fdPutAway" type="SInt32BE" />
+			</structure>
+			<structure id="DInfo" label="DInfo">
+				<element id="frRect" label="frRect" type="struct" ref="Rect" />
+				<element id="frFlags" label="frFlags" type="UInt16BE" />
+				<element id="frLocation" label="frLocation" type="struct" ref="Point" />
+				<element id="frView" label="frView" type="Int16BE" />
+			</structure>
+			<structure id="DXInfo" label="DXInfo">
+				<element id="frScroll" label="frScroll" type="struct" ref="Point" />
+				<element id="frOpenChain" label="frOpenChain" type="SInt32BE" />
+				<element id="frScript" label="frScript" type="SInt8" />
+				<element id="frXFlags" label="frXFlags" type="SInt8" />
+				<element id="frComment" label="frComment" type="Int16BE" />
+				<element id="frPutAway" label="frPutAway" type="SInt32BE" />
+			</structure>
+
+			<structure id="HFSPlusExtentDescriptor" label="ExtentDescriptor">
+				<element id="startBlock" label="startBlock" type="UInt32BE" />
+				<element id="blockCount" label="blockCount" type="UInt32BE" />
+				<summary> <code type="str-expr"> "{" + ElemStr("startBlock")+","+ElemStr("blockCount") + "}" </code> </summary>
+			</structure>
+			<structure id="HFSPlusForkData" label="ForkData">
+				<element id="logicalSize" label="logicalSize" type="UInt64BE" />
+				<element id="clumpSize" label="clumpSize" type="UInt32BE" />
+				<element id="totalBlocks" label="totalBlocks" type="UInt32BE" />
+				<element id="extents" label="extents" type="struct" count="8" ref="HFSPlusExtentDescriptor">
+					<summary> <code type="str-function">
+						dim s as String
+						dim ofs as Integer = CurrentBlockOffset
+						for i as Integer = 0 to 7
+							SetStruct ("HFSPlusExtentDescriptor", ofs + i * 8)
+							dim startBlk as UInt32 = ElemInt("startBlock")
+							dim blkCount as UInt32 = ElemInt("blockCount")
+							if blkCount = 0 then exit
+							if s &lt;&gt; "" then s = s + ","
+							s = s + "{" + IntStr(startBlk)+","+IntStr(blkCount) + "}"
+						next
+						return s
+					</code> </summary>
+				</element>
+			</structure>
+			<structure id="HFSPlusVolumeHeader" label="VolumeHeader">
+				<element id="signature" label="signature" type="char" count="2" />
+				<element id="version" label="version" type="UInt16BE" />
+				<element id="attributes" label="attributes" type="UInt32BE" />
+				<element id="lastMountedVersion" label="lastMountedVersion" type="char" count="4" />
+				<element id="journalInfoBlock" label="journalInfoBlock" type="UInt32BE" />
+				<element id="createDate" label="createDate" type="UInt32BE" view="format=HFSDateNoGMT" />
+				<element id="modifyDate" label="modifyDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="backupDate" label="backupDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="checkedDate" label="checkedDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="fileCount" label="fileCount" type="UInt32BE" />
+				<element id="folderCount" label="folderCount" type="UInt32BE" />
+				<element id="blockSize" label="blockSize" type="UInt32BE" />
+				<element id="totalBlocks" label="totalBlocks" type="UInt32BE">
+					<summary> <code type="str-function">
+						return ElemStr("totalBlocks") + " (volsize: " + SizeStr (ElemInt("blockSize") * ElemInt("totalBlocks"))+")"
+					</code> </summary>
+				</element>
+				<element id="freeBlocks" label="freeBlocks" type="UInt32BE" />
+				<element id="nextAllocation" label="nextAllocation" type="UInt32BE" />
+				<element id="rsrcClumpSize" label="rsrcClumpSize" type="UInt32BE" />
+				<element id="dataClumpSize" label="dataClumpSize" type="UInt32BE" />
+				<element id="nextCatalogID" label="nextCatalogID" type="UInt32BE" />
+				<element id="writeCount" label="writeCount" type="UInt32BE" />
+				<element id="encodingsBitmap" label="encodingsBitmap" type="UInt64BE" />
+				<element id="finderInfoBE" label="finderInfoBE" type="UInt8" count="32" />
+				<element id="allocationFile" label="allocationFile" type="struct" ref="HFSPlusForkData" />
+				<element id="extentsFile" label="extentsFile" type="struct" ref="HFSPlusForkData" />
+				<element id="catalogFile" label="catalogFile" type="struct" ref="HFSPlusForkData" />
+				<element id="attributesFile" label="attributesFile" type="struct" ref="HFSPlusForkData" />
+				<element id="startupFile" label="startupFile" type="struct" ref="HFSPlusForkData" />
+			</structure>
+			<structure id="HFSPlusBSDInfo" label="BSDInfo">
+				<element id="ownerID" label="ownerID" type="UInt32BE" />
+				<element id="groupID" label="groupID" type="UInt32BE" />
+				<element id="adminFlags" label="adminFlags" type="UInt8" />
+				<element id="ownerFlags" label="ownerFlags" type="UInt8" />
+				<element id="fileMode" label="fileMode" type="UInt16BE" />
+				<element id="internal" label="internal" type="UInt32BE" />
+			</structure>
+
+			<structure id="HFSUniStr">
+				<element id="len" label="length" type="UInt16BE" />
+				<element id="txt" label="text" type="UTF16BE" count="$len" />
+				<summary> <code type="str-function">
+					return ElemStr("txt")
+				</code> </summary>
+			</structure>
+
+			<structure id="HFSPlusCatalogFolder" label="CatalogFolder">
+				<element id="recordType" label="recordType" type="Int16BE" />
+				<element id="flags" label="flags" type="UInt16BE" />
+				<element id="valence" label="valence" type="UInt32BE" />
+				<element id="folderID" label="folderID" type="UInt32BE" />
+				<element id="createDate" label="createDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="contentModDate" label="contentModDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="attributeModDate" label="attributeModDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="accessDate" label="accessDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="backupDate" label="backupDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="bsdInfo" label="bsdInfo" type="struct" ref="HFSPlusBSDInfo" />
+				<element id="userInfo" label="userInfo" type="struct" ref="DInfo" />
+				<element id="finderInfo" label="finderInfo" type="struct" ref="DXInfo" />
+				<element id="textEncoding" label="textEncoding" type="UInt32BE" />
+				<element id="attrBlocks" label="attrBlocks" type="UInt32BE" />
+			</structure>
+			<structure id="HFSPlusCatalogFile" label="CatalogFile">
+				<element id="recordType" label="recordType" type="Int16BE" />
+				<element id="flags" label="flags" type="UInt16BE" />
+				<element id="reserved1" label="reserved1" type="UInt32BE" />
+				<element id="fileID" label="fileID" type="UInt32BE" />
+				<element id="createDate" label="createDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="contentModDate" label="contentModDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="attributeModDate" label="attributeModDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="accessDate" label="accessDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="backupDate" label="backupDate" type="UInt32BE" view="format=HFSDate" />
+				<element id="bsdInfo" label="bsdInfo" type="struct" ref="HFSPlusBSDInfo" />
+				<element id="userInfo" label="userInfo" type="struct" ref="FInfo" />
+				<element id="finderInfo" label="finderInfo" type="struct" ref="FXInfo" />
+				<element id="textEncoding" label="textEncoding" type="UInt32BE" />
+				<element id="attrBlocks" label="attrBlocks" type="UInt32BE" />
+				<element id="dataFork" label="dataFork" type="struct" ref="HFSPlusForkData" />
+				<element id="resourceFork" label="resourceFork" type="struct" ref="HFSPlusForkData" />
+			</structure>
+			<structure id="HFSPlusCatalogThread" label="CatalogThread">
+				<element id="recordType" label="recordType" type="Int16BE" />
+				<element id="reserved" label="reserved" type="Int16BE" />
+				<element id="parentID" label="parentID" type="UInt32BE" />
+				<element id="nodeName" label="nodeName" type="struct" ref="HFSUniStr" />
+			</structure>
+
+			<structure id="HFSPlusCatalogKey" label="CatalogKey">
+				<element id="keyLength" label="key length" type="UInt16BE" />
+				<element id="parentID" label="key ID" type="UInt32BE" />
+				<element id="nodeName" label="key name" type="struct" ref="HFSUniStr" />
+			</structure>
+
+			<structure id="HFSPlusIndexRecord" label="Index record">
+				<element id="key" label="key" type="struct" ref="HFSPlusCatalogKey" />
+				<element id="refID" label="reference" type="UInt32BE" />
+				<summary> <code type="str-function">
+					return ElemStr("key.nodeName")
+				</code> </summary>
+			</structure>
+
+			<select id="HFSPlusLeafRecord-switch">
+				<code type="bool-function">
+					dim rt as Integer = Data_uint16be(0)
+					PropInt("recordType") = rt
+					return rt &gt; 0 and rt &lt; 5
+				</code>
+				<element id="" label="entry" type="struct" ref="HFSPlusCatalogFolder">
+					<match>
+						<code type="bool-expr"> PropInt("recordType") = 1 </code>
+					</match>
+				</element>
+				<element id="" label="entry" type="struct" ref="HFSPlusCatalogFile">
+					<match>
+						<code type="bool-expr"> PropInt("recordType") = 2 </code>
+					</match>
+				</element>
+				<element id="" label="entry" type="struct" ref="HFSPlusCatalogThread">
+					<match>
+						<code type="bool-expr"> PropInt("recordType") = 3 or PropInt("recordType") = 4 </code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="HFSPlusLeafRecord" label="Leaf record">
+				<element id="key" label="key" type="struct" ref="HFSPlusCatalogKey" />
+				<element type="select" ref="HFSPlusLeafRecord-switch" />
+				<summary> <code type="str-function">
+					return ElemStr("key.nodeName")
+				</code> </summary>
+			</structure>
+
+			<structure id="BTreeNodeDesc" label="Node Descriptor">
+				<element id="fLink" label="Forward Link" type="UInt32BE" />
+				<element id="bLink" label="Backward Link" type="UInt32BE" />
+				<element id="kind" label="Kind" type="Int8BE">-1: leaf, 0: index, 1: hdr, 2: map</element>
+				<element id="height" label="Depth" type="UInt8" />
+				<element id="numRecords" label="Record count" type="UInt16BE" />
+				<element id="reserved" label="reserved" type="UInt16BE" />
+				<summary> <code type="str-function">
+					dim kind as Integer = ElemInt("kind")
+					if kind = -1 then return "leaf"
+					if kind = 0 then return "index"
+					if kind = 1 then return "hdr"
+					if kind = 2 then return "map"
+					return "--illegal kind--"
+				</code> </summary>
+			</structure>
+
+			<structure id="BTreeHeader" label="B-Tree Header">
+				<element id="treeDepth" label="treeDepth" type="UInt16BE" />
+				<element id="rootNode" label="rootNode" type="UInt32BE" />
+				<element id="leafRecords" label="leafRecords" type="UInt32BE" />
+				<element id="firstLeafNode" label="firstLeafNode" type="UInt32BE" />
+				<element id="lastLeafNode" label="lastLeafNode" type="UInt32BE" />
+				<element id="nodeSize" label="nodeSize" type="UInt16BE" />
+				<element id="maxKeyLength" label="maxKeyLength" type="UInt16BE" />
+				<element id="totalNodes" label="totalNodes" type="UInt32BE" />
+				<element id="freeNodes" label="freeNodes" type="UInt32BE" />
+				<element id="reserved1" label="reserved1" type="UInt16BE" />
+				<element id="clumpSize" label="clumpSize" type="UInt32BE" />
+				<element id="btreeType" label="btreeType" type="UInt8" />
+				<element id="keyCompareType" label="keyCompareType" type="UInt8" />
+				<element id="attributes" label="attributes" type="UInt32BE" />
+				<element id="reserved3" label="reserved3" type="UInt32BE" count="16" view="hidden" />
+			</structure>
+
+			<select id="NodeRecord-header-switch">
+				<element type="struct" ref="BTreeHeader">
+					<match>
+						<code type="bool-expr">
+							SequenceNumber = 0
+						</code>
+					</match>
+				</element>
+				<element label="User data record" type="UInt8" count="128" view="hidden">
+					<match>
+						<code type="bool-expr">
+							SequenceNumber = 1
+						</code>
+					</match>
+				</element>
+				<element label="B-Tree Map" type="UInt8" count="Data_uint16be(Container_BlockSize-8,-2)-Data_uint16be(Container_BlockSize-6,-2)">
+					<match>
+						<code type="bool-expr">
+							SequenceNumber = 2
+						</code>
+					</match>
+				</element>
+			</select>
+
+			<select id="NodeRecord-kind-switch">
+				<code type="bool-function">
+					PropInt("kind") = ElemInt("hdr.kind")
+					return true
+				</code>
+				<element type="struct" ref="HFSPlusLeafRecord">
+					<match>
+						<code type="bool-function">
+							return PropInt("kind") = -1
+						</code>
+					</match>
+				</element>
+				<element type="struct" ref="HFSPlusIndexRecord">
+					<match>
+						<code type="bool-function">
+							return PropInt("kind") = 0
+						</code>
+					</match>
+				</element>
+				<element type="select" ref="NodeRecord-header-switch">
+					<match>
+						<code type="bool-function">
+							return PropInt("kind") = 1
+						</code>
+					</match>
+				</element>
+				<element label="B-Tree Map" type="UInt8" count="Data_uint16be(Container_BlockSize-4,-2)-14">
+					<match>
+						<code type="bool-function">
+							return PropInt("kind") = 2
+						</code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="BTreeNode" label="B-Tree Node">
+				<element id="hdr" label="Header" type="struct" ref="BTreeNodeDesc" />
+				<element id="rec" label="Record" type="select" ref="NodeRecord-kind-switch" count="$hdr.numRecords" />
+			</structure>
+
+			<template id="BTreeNode">
+				<structure ref="BTreeNode" />
+				<match kind="content">
+					<code type="bool-function">
+						// A node has an array of offsets at its end. Let's check those:
+						dim bs as Integer = Container_BlockSize
+						if Data_uint16be(bs-2) = 14 then // first offset is always 14
+							dim kind as Integer = ElemInt("hdr.kind")
+							if kind &gt;= -1 and kind &lt;= 2 then
+								dim recs as Integer = ElemInt("hdr.numRecords")
+								dim lastOfs as Integer = 14
+								for i as integer = 1 to recs
+									dim ofs as integer = Data_uint16be(bs-2-2*i)
+									if ofs &lt;= lastOfs or ofs &gt; bs-2-2*i or (ofs AND 1) = 1 then // each ofs must be higher than its predecessor
+										return false
+									end
+								next i
+								return true
+							end
+						end
+					</code>
+				</match>
+			</template>
+
+			<template id="HFSPlusVolumeHeader">
+				<structure ref="HFSPlusVolumeHeader" />
+				<match kind="content">
+					<code type="bool-function">
+						dim first2Bytes as UInt16 = Data_uint16be(0)
+						if first2Bytes = &amp;h482B or first2Bytes = &amp;h4858 then // "H+" or "HX"
+							dim vers as Integer = ElemInt("version")
+							if (vers = 4 or vers = 5) then
+								// check if alloc block size is a multiple of 512
+								dim blockSize as UInt32 = ElemInt("blockSize")
+								dim sizePer512 as UInt32 = blockSize / 512
+								return sizePer512 * 512 = blockSize
+							end
+						end
+					</code>
+				</match>
+			</template>
+
+			<context id="directory" label="Directory" forTypes="hfs+_directory">
+			</context>
+
+			<context id="volHdr" label="Volume Header" forTypes="hfs+_volHdr">
+			</context>
+
+			<code type="global">
+				<!-- Note: We can only get the first 8 extents here - if the file has more extents, which are in the ext overflow file, we won't get to them. I'd have to write a lot more code to support that -->
+				function GetExtents (fieldName as String) as Extent()
+					if PropRetrieveBlock("volHeader") then
+						SetTemplate("HFSPlusVolumeHeader",0)
+						dim blks as Integer = ElemInt(fieldName+".totalBlocks")
+						dim ofs as Integer = ElemOfs(fieldName+".extents")
+						dim extents() as Extent
+						for i as Integer = 0 to 7
+							SetStruct ("HFSPlusExtentDescriptor", ofs + i * 8)
+							dim startBlk as UInt32 = ElemInt("startBlock")
+							dim blkCount as UInt32 = ElemInt("blockCount")
+							if blkCount = 0 then exit
+							extents.Append new Extent (startBlk * Container_BlockSize, blkCount * Container_BlockSize)
+						next
+						return extents
+					end
+				end function
+			</code>
+
+			<context id="clusters" label="Cluster Area" forTypes="hfs+_clusterArea">
+				<child-context type="hfs+_directory" label="Directory">
+					<code type="bool-function" include="context-support">
+						// get the entents for the file
+						dim extents() as Extent
+						extents = GetExtents ("catalogFile")
+						extents.StoreAsProp("extents")
+						// the nodes have their own block size - it's in the first block of the file
+						if Ubound(extents) &gt;= 0 then
+							dim blkNum as Int64 = extents(0).start \ Container_BlockSize
+							if Container_ReadBlock(blkNum) then
+								SetStruct ("BTreeNode", 0)
+								// we must not use IsValidTemplate() here because if the nodesize is not equal to cluster size, then it'll not be valid
+								if ElemInt("hdr.kind") = 1 and ElemInt("hdr.height") = 0 then
+									dim nodeSize as Int64 = ElemInt("rec[0].nodeSize")
+									PropInt("logBlkSize") = nodeSize
+									return nodeSize &gt;= Container_BlockSize
+								end
+							end
+						end
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="logBlkSize" />
+				</child-context>
+			</context>
+
+			<context id="volume" label="HFS+ Volume" forTypes="partition,hfsWrapper,">
+				<validation>
+					<code type="bool-function" include="context-support">
+						dim valid1, valid2 as Boolean
+						SetTemplate("HFSPlusVolumeHeader")
+						Container_SetBlockSize 512
+						// check main volume header
+						valid1 = Container_ReadBlock(2)
+						valid1 = valid1 and IsValidTemplate()
+						if valid1 then
+							PropStoreBlock("volHeader")
+							PropInt("hfs-volHdr1") = CurrentBlockNumber
+							PropInt("hfs-volBlkSize") = ElemInt("blockSize")
+							PropInt("hfs-volBlkCnt") = ElemInt("totalBlocks")
+							PropStr("hfs-signature") = ElemStr("signature")
+							PropInt("hfs-itemcount") = ElemInt("fileCount")
+							PropStr("hfs-created") = ElemStr("createDate")
+							PropStr("hfs-modified") = ElemStr("modifyDate")
+							PropStr("hfs-lastMountedVersion") = ElemStr("lastMountedVersion")
+						end
+						// check reserve volume header
+						valid2 = Container_ReadBlock(Container_BlockCount-2)
+						valid2 = valid2 and IsValidTemplate()
+						if valid2 then
+							if not valid1 then
+								// we only need these for the cluster area, and we use the information from any valid vol header
+								PropStoreBlock("volHeader")
+								PropInt("hfs-volBlkSize") = ElemInt("blockSize")
+								PropInt("hfs-volBlkCnt") = ElemInt("totalBlocks")
+							end
+							PropInt("hfs-volHdr2") = CurrentBlockNumber
+							PropStr("hfs-signature2") = ElemStr("signature")
+							PropInt("hfs-itemcount2") = ElemInt("fileCount")
+							PropStr("hfs-created2") = ElemStr("createDate")
+							PropStr("hfs-modified2") = ElemStr("modifyDate")
+							PropStr("hfs-lastMountedVersion2") = ElemStr("lastMountedVersion")
+						end
+						return valid1 or valid2
+					</code>
+				</validation>
+				<child-context type="hfs+_volHdr" label="Main Volume Header">
+					<code type="bool-function" include="context-support">
+						if HasProp("hfs-volHdr1") then
+							dim extents() as Extent
+							extents.Append new Extent (PropInt("hfs-volHdr1")*512, 512)
+							extents.StoreAsProp("extents")
+							return true
+						end
+					</code>
+					<new-container extentsProp="extents" />
+					<display-column title="SIG" valueProp="hfs-signature" />
+					<display-column title="FOD" valueProp="hfs-itemcount" />
+					<display-column title="VCD" valueProp="hfs-created" />
+					<display-column title="VMD" valueProp="hfs-modified" />
+					<display-column title="LMV" valueProp="hfs-lastMountedVersion" />
+				</child-context>
+				<child-context type="hfs+_volHdr" label="Backup Volume Header">
+					<code type="bool-function" include="context-support">
+						if HasProp("hfs-volHdr2") then
+							dim extents() as Extent
+							extents.Append new Extent (PropInt("hfs-volHdr2")*512, 512)
+							extents.StoreAsProp("extents")
+							return true
+						end
+					</code>
+					<new-container extentsProp="extents" />
+					<display-column title="SIG" valueProp="hfs-signature2" />
+					<display-column title="FOD" valueProp="hfs-itemcount2" />
+					<display-column title="VCD" valueProp="hfs-created2" />
+					<display-column title="VMD" valueProp="hfs-modified2" />
+					<display-column title="LMV" valueProp="hfs-lastMountedVersion2" />
+				</child-context>
+				<child-context type="hfs+_clusterArea" label="Cluster Area">
+					<code type="bool-function" include="context-support">
+						dim extents() as Extent
+						dim bytesPerCluster as Int64 = PropInt("hfs-volBlkSize")
+						extents.Append new Extent (0, PropInt("hfs-volBlkCnt") * bytesPerCluster)
+						extents.StoreAsProp("extents")
+						return true
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="hfs-volBlkSize" />
+					<copy-property name="volHeader" />
+				</child-context>
+			</context>
+
+		</endianness>
+
+	</namespace>
+
+	<namespace id="apmtbl" label="Apple Partition Map" >
+		<endianness type="big-endian">
+
+			<structure id="block0" label="APM Driver Descriptor">
+				<element id="sbSig" label="signature" type="char" count="2" />
+				<element id="sbBlkSize" label="device block size" type="UInt16" />
+				<element id="sbBlkCount" label="device block count" type="UInt32" />
+				<element id="sbDevType" label="reserved" type="UInt16" />
+				<element id="sbDevId" label="reserved" type="UInt16" />
+				<element id="sbData" label="reserved" type="UInt32" />
+				<element id="sbDrvrCount" label="driver descr count" type="UInt16" />
+				<element id="ddBlock" label="driver start block" type="UInt32" />
+				<element id="ddSize" label="driver size" type="UInt16" />
+				<element id="ddType" label="driver OS type" type="UInt16" />
+				<element id="ddPad" label="more driver descs" type="byte" count="486" view="hidden" />
+			</structure>
+
+			<structure id="partition" label="APM Map Entry">
+				<element id="pmSig" label="signature" type="char" count="2" />
+				<element id="pmSigPad" label="reserved" type="UInt16" />
+				<element id="pmMapBlkCnt" label="blocks in partition map" type="UInt32" />
+				<element id="pmPyPartStart" label="first partition block" type="UInt32" link="*" />
+				<element id="pmPartBlkCnt" label="partition block count" type="UInt32" />
+				<element id="pmPartName" label="partition name" type="cstring" count="32" />
+				<element id="pmParType" label="partition type" type="cstring" count="32" />
+				<element id="pmLgDataStart" label="first block of data area" type="UInt32" />
+				<element id="pmDataCnt" label="data block count" type="UInt32" />
+				<element id="pmPartStatus" label="partition status" type="UInt32" />
+				<element id="pmLgBootStart" label="first block of boot code" type="UInt32" />
+				<element id="pmBootSize" label="size of boot code" type="UInt32" />
+				<element id="pmBootAddr" label="boot code load addr" type="UInt32" />
+				<element id="pmBootAddr2" label="reserved" type="UInt32" />
+				<element id="pmBootEntry" label="boot code entry point" type="UInt32" />
+				<element id="pmBootEntry2" label="reserved" type="UInt32" />
+				<element id="pmBootCksum" label="boot code checksum" type="UInt32" />
+				<element id="pmProcessor" label="processor type" type="char" count="16" />
+				<element id="pmPad" label="reserved" type="byte" count="376" view="hidden" />
+			</structure>
+
+			<template id="apm0" label="APM Block0" >
+				<structure ref="block0" />
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentBlockNumber = 0
+					</code>
+				</match>
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("sbSig") = "ER" and Data_int16be(510) = 0
+					</code>
+				</match>
+			</template>
+
+			<template id="apm1" label="APM Block1" >
+				<structure ref="partition" />
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentBlockNumber = 1
+					</code>
+				</match>
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("pmSig") = "PM" and ElemInt("pmSigPad") = 0 and ElemInt("pmPyPartStart") = 1 and ElemStr("pmPartName") = "Apple" and ElemStr("pmParType") = "Apple_Partition_Map"
+					</code>
+				</match>
+			</template>
+
+			<template id="apmEntry" label="APM Entry" >
+				<structure ref="partition" />
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentBlockNumber >= 1 and CurrentBlockNumber &lt;= 256 // more than 256 PM entries are very unlikely
+					</code>
+				</match>
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("pmSig") = "PM" and ElemInt("pmSigPad") = 0 and CurrentBlockNumber &lt;= ElemInt("pmMapBlkCnt")
+					</code>
+				</match>
+			</template>
+
+			<context id="disk" label="Disk" forTypes="">	<!-- empty types mean the global space, e.g. disk -->
+				<validation>
+					<code type="bool-function">
+						if Container_ReadBlock(0) then
+							SetTemplate("apm0")
+							if IsValidTemplate() then
+								Container_SetBlockSize ElemInt("sbBlkSize")
+							end
+							if Container_ReadBlock(1) then
+								SetTemplate("apm1")
+								if IsValidTemplate() then
+									PropInt("apm-partsCnt") = ElemInt("pmMapBlkCnt")
+									return true
+								end
+							end
+						end
+					</code>
+				</validation>
+
+				<macro id="check-partition-record">
+					<code type="bool-function" include="context-support">
+						dim partNum as Integer = $1 // zero-based
+						if partNum >= PropInt("apm-partsCnt") then return false
+						if Container_ReadBlock(1 + partNum) then
+							SetTemplate("apmEntry")
+							if IsValidTemplate() then
+								dim firstBlk as Int64 = ElemInt("pmPyPartStart")
+								dim blkCnt as Int64 = ElemInt("pmPartBlkCnt")
+								if firstBlk > 0 and blkCnt > 0 then
+									dim blkSize as Int64 = Container_BlockSize
+									dim extents() as Extent
+									extents.Append new Extent (firstBlk * blkSize, blkCnt * blkSize)
+									extents.StoreAsProp("extents")
+									return true
+								end
+							end
+						end
+					</code>
+					<new-container extentsProp="extents" />
+				</macro>
+
+				<child-context type="partition" label="Partition 1">
+					<use-macro ref="check-partition-record" args="0" />
+				</child-context>
+				<child-context type="partition" label="Partition 2">
+					<use-macro ref="check-partition-record" args="1" />
+				</child-context>
+				<child-context type="partition" label="Partition 3">
+					<use-macro ref="check-partition-record" args="2" />
+				</child-context>
+				<child-context type="partition" label="Partition 4">
+					<use-macro ref="check-partition-record" args="3" />
+				</child-context>
+				<child-context type="partition" label="Partition 5">
+					<use-macro ref="check-partition-record" args="4" />
+				</child-context>
+				<child-context type="partition" label="Partition 6">
+					<use-macro ref="check-partition-record" args="5" />
+				</child-context>
+				<child-context type="partition" label="Partition 7">
+					<use-macro ref="check-partition-record" args="6" />
+				</child-context>
+				<child-context type="partition" label="Partition 8">
+					<use-macro ref="check-partition-record" args="7" />
+				</child-context>
+				<child-context type="partition" label="Partition 9">
+					<use-macro ref="check-partition-record" args="8" />
+				</child-context>
+				<child-context type="partition" label="Partition 10">
+					<use-macro ref="check-partition-record" args="9" />
+				</child-context>
+				<child-context type="partition" label="Partition 11">
+					<use-macro ref="check-partition-record" args="10" />
+				</child-context>
+				<child-context type="partition" label="Partition 12">
+					<use-macro ref="check-partition-record" args="11" />
+				</child-context>
+				<child-context type="partition" label="Partition 13">
+					<use-macro ref="check-partition-record" args="12" />
+				</child-context>
+				<child-context type="partition" label="Partition 14">
+					<use-macro ref="check-partition-record" args="13" />
+				</child-context>
+				<child-context type="partition" label="Partition 15">
+					<use-macro ref="check-partition-record" args="14" />
+				</child-context>
+				<child-context type="partition" label="Partition 16">
+					<use-macro ref="check-partition-record" args="15" />
+				</child-context>
+				<child-context type="partition" label="Partition 17">
+					<use-macro ref="check-partition-record" args="16" />
+				</child-context>
+				<child-context type="partition" label="Partition 18">
+					<use-macro ref="check-partition-record" args="17" />
+				</child-context>
+				<child-context type="partition" label="Partition 19">
+					<use-macro ref="check-partition-record" args="18" />
+				</child-context>
+				<child-context type="partition" label="Partition 20">
+					<use-macro ref="check-partition-record" args="19" />
+				</child-context>
+
+			</context>
+
+		</endianness>
+	</namespace>
+
+	<namespace id="mbrptbl" label="MBR Partition Table" >
+
+		<endianness type="little-endian">
+
+			<structure id="partrec" label="Partition Record">
+				<element id="status" label="status" type="UInt8" />
+				<element id="pos1" label="first cyl-hd-sec" type="UInt8" count="3" />
+				<element id="type" label="type" type="UInt8" />
+				<element id="pos2" label="last cyl-hd-sec" type="UInt8" count="3" />
+				<element id="start" label="start sector" type="UInt32" />
+				<element id="size" label="sector count" type="UInt32" />
+				<summary> <code type="str-function">
+					if ElemInt("type") &lt;&gt; 0 then
+						dim s as String
+						if (Data_uint8(0) and 128) &lt;&gt; 0 then
+							s = ">" // active partition
+						else
+							s = " "
+						end
+						s = s+HexStr(ElemInt("type"),2)+", "+IntStr(ElemInt("start"))+", "+IntStr(ElemInt("size"))
+						return s
+					end
+				</code> </summary>
+			</structure>
+
+			<structure id="mbr" label="Master Boot Record">
+				<element id="code" label="code" type="byte" count="440" view="hidden" />
+				<element id="optsig" label="disk signature" type="UInt32"/>
+				<element id="nulls" label="null" type="UInt16"/>
+				<element id="part1" label="partition 1" type="struct" ref="partrec" />
+				<element id="part2" label="partition 2" type="struct" ref="partrec" />
+				<element id="part3" label="partition 3" type="struct" ref="partrec" />
+				<element id="part4" label="partition 4" type="struct" ref="partrec" />
+				<element id="blksig" label="sector signature" type="UInt16" view="format=hex" />
+			</structure>
+
+			<template id="mbr" label="MBR" >
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentPhysByteOffset = 0
+					</code>
+				</match>
+				<match kind="content">
+					<code type="bool-function">
+						if ElemInt("blksig") = &amp;hAA55 then
+							dim isBootSector, isEFI as Boolean
+							isEFI = <use-macro ref="efi-test" />
+							isBootSector = Data_string(54,8) = "FAT16   " or Data_string(82,8) = "FAT32   " or Data_string(3,8) = "NTFS    "
+							return not isEFI and not isBootSector
+						end
+					</code>
+				</match>
+				<structure ref="mbr" />
+			</template>
+
+			<context id="disk" label="Disk" forTypes="">	<!-- empty types mean the global space, e.g. disk -->
+
+				<validation>
+					<code type="bool-function">
+						if Container_ReadBlock(0) then
+							SetTemplate("mbr")
+							if IsValidTemplate() then
+								dim size as Int64 = ElemInt("part1.size")
+								return size > 0
+							end
+						end
+					</code>
+				</validation>
+
+				<macro id="check-partition-record">
+					<code type="bool-function" include="context-support">
+						if Container_ReadBlock(0) then
+							SetTemplate("mbr")
+							dim size as Int64 = ElemInt("part$1.size")
+							if size > 0 then
+								dim extents() as Extent
+								extents.Append new Extent (ElemInt("part$1.start") * 512, size * 512)
+								extents.StoreAsProp("extents")
+								PropInt("logBlkSize") = 512
+								return true
+							end
+						end
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="logBlkSize" />
+				</macro>
+
+				<child-context type="partition" label="Partition 1">
+					<use-macro ref="check-partition-record" args="1" />
+				</child-context>
+				<child-context type="partition" label="Partition 2">
+					<use-macro ref="check-partition-record" args="2" />
+				</child-context>
+				<child-context type="partition" label="Partition 3">
+					<use-macro ref="check-partition-record" args="3" />
+				</child-context>
+				<child-context type="partition" label="Partition 4">
+					<use-macro ref="check-partition-record" args="4" />
+				</child-context>
+
+			</context>
+
+		</endianness>
+
+	</namespace>
+
+	<namespace id="guidtbl" label="GUID Partition Table" >
+		<endianness type="little-endian">
+
+			<template id="efimbr" label="MBR (GPT)" >
+				<structure ref="mbrptbl.mbr" />
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentPhysByteOffset = 0
+					</code>
+				</match>
+				<match kind="content">
+					<code type="bool-expr">
+						ElemInt("blksig") = &amp;hAA55 and <use-macro ref="efi-test" />
+					</code>
+				</match>
+			</template>
+
+			<structure id="efihdr" label="Header">
+				<element id="sig" label="signature" type="char" count="8" />
+				<element id="rev" label="revision" type="UInt32BE" />
+				<element id="hdrsize" label="header size" type="UInt32" />
+				<element id="hdrcrc" label="header CRC32" type="UInt32" />
+				<element id="resv1" label="reserved" type="UInt32" />
+				<element id="lba1" label="primary LBA" type="UInt64" />
+				<element id="lba2" label="backup LBA" type="UInt64" />
+				<element id="dataStart" label="first usable LBA" type="UInt64" />
+				<element id="dataEnd" label="last usable LBA" type="UInt64" />
+				<element id="guid" label="disk GUID" type="GUID" />
+				<element id="partStart" label="partition entries start" type="UInt64" />
+				<element id="partCount" label="number of partition entries" type="UInt32" />
+				<element id="partSize" label="size of a partition entry" type="UInt32" />
+				<element id="partCRC" label="CRC32 of partition array" type="UInt32" />
+				<element id="resv2" label="reserved" type="UInt8" count="420" view="hidden" />
+			</structure>
+
+			<structure id="efipart" label="Entry">
+				<element id="type" label="partition type GUID" type="GUID" />
+				<element id="pguid" label="unique partition GUID" type="GUID" />
+				<element id="firstBlk" label="first LBA" type="UInt64" />
+				<element id="lastBlk" label="last LBA" type="UInt64" />
+				<element id="attr" label="attributes" type="UInt64" />
+				<element id="name" label="partition name" type="UTF16LE" count="36" />
+			</structure>
+
+			<select id="efipart-switch">
+				<element type="struct" ref="efipart">
+					<match>
+						<code type="bool-expr"> Data_int64(0) &lt;&gt; 0 or Data_int64(8) &lt;&gt; 0 </code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="efiparts" label="Entries">
+				<element id="entry" type="select" ref="efipart-switch" count="*" />
+			</structure>
+
+			<template id="efitbl" label="Header" >
+				<structure ref="efihdr" />
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentBlockNumber=1
+					</code>
+				</match>
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("sig") = "EFI PART" and ElemInt("rev") = &amp;H00000100 and ElemInt("hdrsize") = 92
+					</code>
+				</match>
+			</template>
+
+			<template id="efiparts" label="Entries" >
+				<structure ref="efiparts" />
+				<match kind="location" context="guidtbl.disk">
+					<code type="bool-function">
+						dim blkSize as Int64 = Container_BlockSize
+						dim start as Int64 = PropInt("efi-partsBlk")
+						dim n as Integer = blkSize / PropInt("efi-partsSize")
+						dim endplus1 as Int64 = start + PropInt("efi-partsCnt") / n
+						return CurrentBlockNumber &gt;= start and CurrentBlockNumber &lt; endplus1
+					</code>
+				</match>
+			</template>
+
+			<context id="disk" label="Disk" forTypes="">	<!-- empty types mean the global space, e.g. disk -->
+				<validation>
+					<code type="bool-function">
+						// We ignore the MBR's $EE entry on purpose - the MBR might have other info,
+						// and we still want to detect a GUID scheme regardless.
+						if Container_ReadBlock(1) then
+							SetTemplate("efitbl")
+							if IsValidTemplate() then
+								dim blkSize as Int64 = Container_BlockSize
+								PropInt("logBlkSize") = blkSize
+								PropInt("efi-partsBlk") = ElemInt("partStart") // usually 2
+								PropInt("efi-partsCnt") = ElemInt("partCount")
+								PropInt("efi-partsSize") = ElemInt("partSize") // usually 128
+								return true
+							end
+						end
+					</code>
+				</validation>
+
+				<macro id="check-partition-record">
+					<code type="bool-function" include="context-support">
+						dim partNum as Integer = $1
+						if partNum >= PropInt("efi-partsCnt") then return false
+						dim blkSize as Int64 = Container_BlockSize
+						dim partOfs as Integer = partNum * PropInt("efi-partsSize")
+						dim blkStart as Integer = PropInt("efi-partsBlk")
+						dim blkOfs as Integer = partOfs / blkSize
+						dim blkNum as Integer = blkStart + blkOfs
+						if Container_ReadBlock(blkNum) then
+							dim ofsInBlk as Integer = partOfs MOD blkSize
+							SetStruct("efipart", ofsInBlk, blkSize)
+							dim firstBlk as Int64 = ElemInt("firstBlk")
+							dim lastBlk as Int64 = ElemInt("lastBlk")
+							if firstBlk > 0 then
+								dim blkCnt as Int64 = lastBlk + 1 - firstBlk
+								dim extents() as Extent
+								extents.Append new Extent (firstBlk * blkSize, blkCnt * blkSize)
+								extents.StoreAsProp("extents")
+								return true
+							end
+						end
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="logBlkSize" />
+				</macro>
+
+				<child-context type="partition" label="Partition 1">
+					<use-macro ref="check-partition-record" args="0" />
+				</child-context>
+				<child-context type="partition" label="Partition 2">
+					<use-macro ref="check-partition-record" args="1" />
+				</child-context>
+				<child-context type="partition" label="Partition 3">
+					<use-macro ref="check-partition-record" args="2" />
+				</child-context>
+				<child-context type="partition" label="Partition 4">
+					<use-macro ref="check-partition-record" args="3" />
+				</child-context>
+				<child-context type="partition" label="Partition 5">
+					<use-macro ref="check-partition-record" args="4" />
+				</child-context>
+				<child-context type="partition" label="Partition 6">
+					<use-macro ref="check-partition-record" args="5" />
+				</child-context>
+				<child-context type="partition" label="Partition 7">
+					<use-macro ref="check-partition-record" args="6" />
+				</child-context>
+				<child-context type="partition" label="Partition 8">
+					<use-macro ref="check-partition-record" args="7" />
+				</child-context>
+				<child-context type="partition" label="Partition 9">
+					<use-macro ref="check-partition-record" args="8" />
+				</child-context>
+				<child-context type="partition" label="Partition 10">
+					<use-macro ref="check-partition-record" args="9" />
+				</child-context>
+				<child-context type="partition" label="Partition 11">
+					<use-macro ref="check-partition-record" args="10" />
+				</child-context>
+				<child-context type="partition" label="Partition 12">
+					<use-macro ref="check-partition-record" args="11" />
+				</child-context>
+				<child-context type="partition" label="Partition 13">
+					<use-macro ref="check-partition-record" args="12" />
+				</child-context>
+				<child-context type="partition" label="Partition 14">
+					<use-macro ref="check-partition-record" args="13" />
+				</child-context>
+				<child-context type="partition" label="Partition 15">
+					<use-macro ref="check-partition-record" args="14" />
+				</child-context>
+				<child-context type="partition" label="Partition 16">
+					<use-macro ref="check-partition-record" args="15" />
+				</child-context>
+				<child-context type="partition" label="Partition 17">
+					<use-macro ref="check-partition-record" args="16" />
+				</child-context>
+				<child-context type="partition" label="Partition 18">
+					<use-macro ref="check-partition-record" args="17" />
+				</child-context>
+				<child-context type="partition" label="Partition 19">
+					<use-macro ref="check-partition-record" args="18" />
+				</child-context>
+				<child-context type="partition" label="Partition 20">
+					<use-macro ref="check-partition-record" args="19" />
+				</child-context>
+				<!-- there could be more partitions, up to 128. Ideally, we'd run a loop here, but that's not possible yet -->
+
+			</context>
+		</endianness>
+	</namespace>
+	
+	<namespace id="ntfs" label="NTFS" >
+		
+		<!-- see: http://technet.microsoft.com/en-us/library/cc781134(WS.10).aspx -->
+		<!-- see: http://www.ntfs.com/ntfs-partition-boot-sector.htm -->
+		
+		<endianness type="little-endian">
+
+			<structure id="bootblk" label="Partition Boot Record (NTFS)">
+				<element id="jmp" label="jmp instr" type="byte" count="3" />
+				<element id="oem" label="OEM name" type="char" count="8" />
+				<element id="bps" label="bytes per sector" type="UInt16"/>
+				<element id="spc" label="sectors per cluster" type="UInt8"/>
+				<element id="zero1" label="zeros" type="UInt8" count="7" view="hidden" />
+				<element id="media" label="media descriptor" type="UInt8"/>
+				<element id="zero2" label="zeros" type="UInt8" count="2" view="hidden" />
+				<element id="ignored1" label="ignored" type="UInt8" count="4" view="hidden" />
+				<element id="hidden" label="hidden sectors" type="UInt32" >= this block number</element>
+				<element id="zero3" label="zeros" type="UInt8" count="4" view="hidden" />
+				<element id="ignored2" label="ignored" type="UInt8" count="4" view="hidden" />
+				<element id="sectors" label="total sectors" type="UInt64">
+					<summary> <code type="str-function">
+						return ElemStr("sectors") + " (volsize: " + SizeStr (ElemInt("sectors") * ElemInt("bps"))+")"
+					</code> </summary>
+				</element>
+				<element id="clMFT" label="$MFT cluster no" type="UInt64"/>
+				<element id="clMFTmirr" label="$MFTMirr cluster no" type="UInt64"/>
+				<element id="clPerRec" label="clusters per MFT Rec" type="UInt8"/>
+				<element id="ignored3" label="ignored" type="UInt8" count="3" view="hidden" />
+				<element id="clPerIdx" label="clusters per Idx Buf" type="Int8"/>
+				<element id="ignored4" label="ignored" type="UInt8" count="3" view="hidden" />
+				<element id="volSerial" label="volume serial no" type="UInt64" view="format=hex" />
+				<element id="checksum" label="checksum" type="UInt8" count="4" />
+				<element id="code" label="code" type="UInt8" count="426" view="hidden" />
+				<element id="blksig" label="sector signature" type="UInt16" view="format=hex" />
+			</structure>
+
+			<template id="bootblk" label="Boot Sector (NTFS)" >
+				<match kind="content">
+					<code type="bool-expr">
+						ElemInt("blksig") = &amp;hAA55 and ElemStr("oem") = "NTFS    "
+					</code>
+				</match>
+				<structure ref="bootblk" />
+			</template>
+
+			<context id="volume" label="NTFS Volume" forTypes="partition,">
+
+				<validation>
+					<code type="bool-function">
+						if Container_ReadBlock(0) then
+							SetTemplate("bootblk")
+							if IsValidTemplate() then
+								PropStoreBlock("bootsector")
+								return true
+							end
+						end
+					</code>
+				</validation>
+
+				<child-context type="ntfs_cluster_area" label="Cluster Area">
+					<code type="bool-function" include="context-support">
+						if PropRetrieveBlock("bootsector") then
+							SetTemplate("bootblk")
+							dim bytesPerSector as Int64 = ElemInt("bps")
+							dim sectorsPerCluster as Int64 = ElemInt("spc")
+							dim sectorCount as Int64 = ElemInt("sectors")
+							dim extents() as Extent
+							extents.Append new Extent (0, sectorCount * bytesPerSector)
+							extents.StoreAsProp("extents")
+							PropInt("logBlkSize") = sectorsPerCluster * bytesPerSector
+							return true
+						end
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="logBlkSize" />
+				</child-context>
+
+			</context>
+
+			<context id="clusters" label="Cluster Area" forTypes="ntfs_cluster_area">
+			</context>
+
+		</endianness>
+
+	</namespace>
+
+	<namespace id="fat" label="FAT" >
+
+		<endianness type="little-endian">
+
+			<macro id="pbrhead">
+				<element id="jmp" label="jmp instr" type="byte" count="3" />
+				<element id="oem" label="OEM name" type="char" count="8" />
+				<element id="bps" label="bytes per sector" type="UInt16"/>
+				<element id="spc" label="sectors per cluster" type="UInt8"/>
+				<element id="ressects" label="reserved sector count" type="UInt16"/>
+				<element id="nfats" label="number of file alloc tbls" type="UInt8"/>
+				<element id="maxrootentries" label="max num of root entries" type="UInt16"/>
+				<element id="secs16" label="total sectors (16 bit)" type="UInt16"/>
+				<element id="media" label="media descriptor" type="UInt8"/>
+				<element id="fatsize16" label="sectors per file alloc tbl" type="UInt16"/>
+				<element id="spt" label="sectors per track" type="UInt16"/>
+				<element id="heads" label="number of heads" type="UInt16"/>
+				<element id="hidden" label="number of hidden sectors" type="UInt32"/>
+				<element id="secs32" label="total sectors (32 bit)" type="UInt32"/>
+			</macro>
+
+			<structure id="pbr16" label="Partition Boot Record (FAT16)">
+				<use-macro ref="pbrhead" />
+				<element id="drivenum" label="drive number" type="UInt8"/>
+				<element id="resv1" label="reserved" type="UInt8"/>
+				<element id="sig" label="boot signature" type="UInt8"/>
+				<element id="sernum" label="serial number" type="UInt32"/>
+				<element id="label" label="volume label" type="char" count="11"/>
+				<element id="systype" label="system type" type="char" count="8" />
+				<element id="code" label="boot code" type="byte" count="448" />
+				<element id="blksig" label="sector signature" type="UInt16" view="format=hex" />
+			</structure>
+
+			<structure id="pbr32" label="Partition Boot Record (FAT32)">
+				<use-macro ref="pbrhead" />
+				<element id="fatsize32" label="sectors per file alloc tbl" type="UInt32"/>
+				<element id="flags" label="flags" type="UInt16"/>
+				<element id="vers" label="version" type="UInt16"/>
+				<element id="rootcluster" label="cluster of root dir" type="UInt32"/>
+				<element id="fsinfosec" label="FS Info sector" type="UInt16"/>
+				<element id="duplicate" label="sector of copy of this" type="UInt16"/>
+				<element id="resv1" label="reserved" type="byte" count="12" />
+				<element id="drvnum" label="drive number" type="UInt8"/>
+				<element id="resv2" label="reserved" type="byte" count="1" />
+				<element id="sig" label="boot signature" type="byte" />
+				<element id="serial" label="serial number" type="UInt32" />
+				<element id="label" label="volume label" type="char" count="11" />
+				<element id="systype" label="system type" type="char" count="8" />
+				<element id="code" label="boot code" type="byte" count="420" view="hidden" />
+				<element id="blksig" label="sector signature" type="UInt16" view="format=hex" />
+			</structure>
+
+			<structure id="direntry" label="Dir Entry">
+				<element id="name" label="name" type="char" count="8" />
+				<element id="ext" label="extension" type="char" count="3" />
+				<element id="attr" label="attributes" type="byte"/>
+				<element id="res1" label="reserved" type="byte"/>
+				<element id="crtime10ms" label="creation time (10ms)" type="UInt8"/>
+				<element id="crtime" label="creation time" type="UInt16"/>
+				<element id="crdate" label="creation date" type="UInt16"/>
+				<element id="acdate" label="access date" type="UInt16"/>
+				<element id="lochi" label="first cluster hi" type="UInt16"/>
+				<element id="mdtime" label="modification time" type="UInt16"/>
+				<element id="mddate" label="modification date" type="UInt16"/>
+				<element id="loclo" label="first cluster lo" type="UInt16"/>
+				<element id="flen" label="file size" type="UInt32"/>
+				<summary> <code type="str-function">
+					return ElemStr("name")
+				</code> </summary>
+			</structure>
+
+			<select id="direntry-switch">
+				<element id="" label="entry" type="struct" ref="direntry">
+					<match>
+						<code type="bool-expr"> Data_int8(0) &lt;&gt; 0 </code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="firstdirblock" label="Directory">
+				<element id="self" label="self" type="struct" ref="direntry" />
+				<element id="parent" label="parent" type="struct" ref="direntry" />
+				<element type="select" ref="direntry-switch" count="*" />
+			</structure>
+
+			<structure id="nextdirblock" label="Directory">
+				<element type="select" ref="direntry-switch" count="*" />
+			</structure>
+
+			<template id="pbr16" label="Boot Sector (FAT16)" >
+				<match kind="content">
+					<code type="bool-expr">
+						ElemInt("blksig") = &amp;hAA55 and ElemStr("systype") = "FAT16   "
+					</code>
+				</match>
+				<structure ref="pbr16" />
+			</template>
+
+			<template id="pbr32" label="Boot Sector (FAT32)" >
+				<match kind="content">
+					<code type="bool-expr">
+						ElemInt("blksig") = &amp;hAA55 and ElemStr("systype") = "FAT32   "
+					</code>
+				</match>
+				<structure ref="pbr32" />
+			</template>
+
+			<template id="directory" label="Directory start block" >
+				<match kind="content">
+					<code type="bool-expr">
+						Trim(ElemStr("self.name")) = "." and Trim(ElemStr("parent.name")) = ".."
+					</code>
+				</match>
+				<structure ref="firstdirblock" />
+			</template>
+
+			<context id="clusters" label="Cluster Area" forTypes="fat_cluster_area">
+			</context>
+
+			<context id="volume" label="FAT Volume" forTypes="partition,">
+
+				<validation>
+					<code type="bool-function">
+						if Container_ReadBlock(0) then
+							SetTemplate("pbr16")
+							if IsValidTemplate() then
+								dim bytesPerSector as Int64 = ElemInt("bps")
+								dim sectorsPerCluster as Int64 = ElemInt("spc")
+								PropInt("logBlkSize") = bytesPerSector * sectorsPerCluster
+								return true
+							end
+							SetTemplate("pbr32")
+							if IsValidTemplate() then
+								dim bytesPerSector as Int64 = ElemInt("bps")
+								dim sectorsPerCluster as Int64 = ElemInt("spc")
+								PropInt("logBlkSize") = bytesPerSector * sectorsPerCluster
+								return true
+							end
+						end
+					</code>
+				</validation>
+
+				<child-context type="fat_cluster_area" label="Cluster Area">
+					<code type="bool-function" include="context-support">
+						if Container_ReadBlock(0) then
+							SetTemplate("pbr32")
+							dim isFAT32 as Boolean = IsValidTemplate()
+							dim bytesPerSector as Int64 = ElemInt("bps")
+							dim sectorsPerCluster as Int64 = ElemInt("spc")
+							dim fatsize as Integer = ElemInt("fatsize16")
+							if fatsize = 0 then fatsize = ElemInt("fatsize32")
+							dim rootCluster as Int64
+							if isFAT32 then
+								rootCluster = ElemInt("rootcluster")
+							else
+								rootCluster = 0
+							end
+							dim startSector as Int64 = fatsize * ElemInt("nfats") + ElemInt("ressects") - (rootCluster * sectorsPerCluster)
+							dim sectorCount as Int64 = ElemInt("secs16")
+							if sectorCount = 0 then sectorCount = ElemInt("secs32")
+							dim extents() as Extent
+							extents.Append new Extent (startSector * bytesPerSector, (sectorCount-startSector) * bytesPerSector)
+							extents.StoreAsProp("extents")
+							return true
+						end
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="logBlkSize" />
+				</child-context>
+
+				<child-context type="fat_directory" label="Root Directory">
+					<code type="bool-function" include="context-support">
+						if Container_ReadBlock(0) then
+							SetTemplate("pbr32")
+							dim isFAT32 as Boolean = IsValidTemplate()
+							dim bytesPerSector as Int64 = ElemInt("bps")
+							dim sectorsPerCluster as Int64 = ElemInt("spc")
+							dim fatsize as Integer = ElemInt("fatsize16")
+							if fatsize = 0 then fatsize = ElemInt("fatsize32")
+							dim rootCluster as Int64
+							dim dirLen as Int64
+							if isFAT32 then
+								rootCluster = ElemInt("rootcluster")
+								dirLen = 1 * sectorsPerCluster * bytesPerSector
+							else
+								rootCluster = 0
+								dirLen = 32 * ElemInt("maxrootentries")
+							end
+							dim startSector as Int64 = fatsize * ElemInt("nfats") + ElemInt("ressects") - (rootCluster * sectorsPerCluster)
+							dim sectorCount as Int64 = ElemInt("secs16")
+							if sectorCount = 0 then sectorCount = ElemInt("secs32")
+							dim extents() as Extent
+							extents.Append new Extent ((rootCluster+startSector) * bytesPerSector, dirLen)
+							extents.StoreAsProp("extents")
+							return true
+						end
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="logBlkSize" />
+				</child-context>
+
+			</context>
+
+		</endianness>
+
+	</namespace>
+
+	<namespace id="extfs" label="ExtFS" >
+
+		<endianness type="little-endian">
+
+			<view-formatter id="epoch">
+				<code type="str-function">
+					dim n as UInt32 = Data_uint32le(0) //+ GMTOffsetInHours * 3600
+					dim d, m, y as Integer
+					dim h as Double
+					h = GetDateFromUnixEpoch (n, y, m, d)
+					return IntStr(y)+"-"+IntStr0(m,2)+"-"+IntStr0(d,2)+" "+IntStr0(h,2)+":"+IntStr0((h-floor(h))*60,2)+":"+IntStr0((h*60-floor(h*60))*60,2)
+				</code>
+			</view-formatter>
+
+			<structure id="superblock" label="Ext2/3/4 superblock">	<!-- http://www.nongnu.org/ext2-doc/ext2.html#SUPERBLOCK -->
+				<element label="inodes count" type="UInt32"/>
+				<element id="blocks_count" label="blocks count" type="UInt32" >
+					<summary> <code type="str-function">
+						return ElemStr("blocks_count") + " (volsize: " + SizeStr (ElemInt("blocks_count") * ShiftLeft(1024,ElemInt("log_block_size")))+")"
+					</code> </summary>
+				</element>
+				<element label="r-blocks count" type="UInt32"/>
+				<element label="free blocks count" type="UInt32"/>
+				<element label="free inodes count" type="UInt32"/>
+				<element label="first data block" type="UInt32"/>
+				<element id="log_block_size" label="log block size" type="UInt32"/>
+				<element label="log frag size" type="UInt32"/>
+				<element label="blocks per group" type="UInt32"/>
+				<element label="frags per group" type="UInt32"/>
+				<element label="inodes per group" type="UInt32"/>
+				<element label="mtime" type="UInt32" view="format=epoch" />
+				<element label="wtime" type="UInt32" view="format=epoch" />
+				<element label="mnt count" type="UInt16"/>
+				<element label="max mnt count" type="UInt16"/>
+				<element label="magic" type="UInt16" view="format=hex"/>
+				<element label="state" type="UInt16"/>
+				<element label="errors" type="UInt16"/>
+				<element label="minor rev level" type="UInt16"/>
+				<element label="lastcheck" type="UInt32" view="format=epoch" />
+				<element label="checkinterval" type="UInt32"/>
+				<element label="creator os" type="UInt32"/>
+				<element label="rev level" type="UInt32"/>
+				<element label="def resuid" type="UInt16"/>
+				<element label="def resgid" type="UInt16"/>
+				<element label="first ino" type="UInt32"/>
+				<element label="inode size" type="UInt16"/>
+				<element label="block group nr" type="UInt16"/>
+				<element label="feature compat" type="UInt32"/>
+				<element label="feature incompat" type="UInt32"/>
+				<element label="feature ro compat" type="UInt32"/>
+				<element label="uuid" type="UInt8" count="16" view="format=hex"/>
+				<element label="volume name" type="char" count="16"/>
+				<element label="last mounted" type="char" count="64"/>
+				<element label="algo bitmap" type="UInt32" view="format=hex"/>
+				<element label="prealloc blocks" type="UInt8"/>
+				<element label="prealloc dir blocks" type="UInt8"/>
+				<element label="padding" type="UInt8" count="2" view="hidden"/>
+				<element label="journal uuid" type="UInt8" count="16" view="format=hex"/>
+				<element label="journal inum" type="UInt32"/>
+				<element label="journal dev" type="UInt32"/>
+				<element label="last orphan" type="UInt32"/>
+				<element label="hash seed" type="UInt8" count="16" view="format=hex"/>
+				<element label="def hash version" type="UInt8"/>
+				<element label="padding" type="UInt8" count="3" view="hidden"/>
+				<element label="default mount options" type="UInt32" view="format=hex"/>
+				<element label="first meta bg" type="UInt32"/>
+			</structure>
+
+			<template id="superblock" label="superblock" >
+				<match kind="content">
+					<code type="bool-function">
+						if Data_uint16le(56) = &amp;hEF53 and Data_uint32le(20) &lt;= 1 then
+							dim block_size as Integer = ShiftLeft(1024,ElemInt("log_block_size"))
+							if Data_uint16le(88) &lt;= block_size then
+								dim rev_level as Integer = Data_uint32le(76)
+								dim state as Integer = Data_uint16le(58)
+								return state &lt;= 2 and rev_level &lt;= 1
+							end
+						end
+					</code>
+				</match>
+				<structure ref="superblock" />
+			</template>
+
+		</endianness>
+
+	</namespace>
+
+	<namespace id="iso-9660" label="ISO 9660" >
+
+        <structure id="ISOTimeStr" label="ISOTimeStr">
+                         date and time as text 
+			<element id="year" label="year" type="char" count="4" />
+			<element id="month" label="month" type="char" count="2" />
+			<element id="day" label="day" type="char" count="2" />
+			<element id="hour" label="hour" type="char" count="2" />
+			<element id="minute" label="minute" type="char" count="2" />
+			<element id="second" label="second" type="char" count="2" />
+			<element id="hundreth" label="hundreth" type="char" count="2" />
+			<element id="gmtOffset" label="gmtOffset" type="char" />
+        </structure>
+        <structure id="ISOTimeBin" label="ISOTimeBin">
+			<element id="year" label="year" type="byte">
+					 since 1900 
+			</element>
+			<element id="month" label="month" type="byte" />
+			<element id="day" label="day" type="byte" />
+			<element id="hour" label="hour" type="byte" />
+			<element id="minute" label="minute" type="byte" />
+			<element id="second" label="second" type="byte" />
+        </structure>
+        <structure id="VolumeDescriptor" label="VolumeDescriptor">
+			<element id="descriptorType" label="descriptorType" type="UInt8" />
+			<element id="standardIdentifier" label="standardIdentifier" type="char" count="5">
+					 Must be "CD001" 
+			</element>
+			<element id="descriptorVersion" label="descriptorVersion" type="UInt8">
+					 Must be 1 
+			</element>
+			<element id="volumeFlags" label="volumeFlags" type="UInt8">
+					 Must be 0 in a primary volume descriptor 
+			</element>
+			<element id="systemIdentifier" label="systemIdentifier" type="char" count="32" />
+			<element id="volumeIdentifier" label="volumeIdentifier" type="char" count="32" />
+			<element id="Reserved2" label="Reserved2" type="byte" count="8" />
+			<element id="lsbAEVolumeSpaceSize" label="lsbAEVolumeSpaceSize" type="Int32LE" />
+			<element id="msbAEVolumeSpaceSize" label="msbAEVolumeSpaceSize" type="Int32BE" />
+			<element id="escapeSequences" label="escapeSequences" type="char" count="32" />
+			<element id="lsbAEVolumeSetSize" label="lsbAEVolumeSetSize" type="Int16LE" />
+			<element id="msbAEVolumeSetSize" label="msbAEVolumeSetSize" type="Int16BE" />
+			<element id="lsbAEVolumeSetSequenceNumber" label="lsbAEVolumeSetSequenceNumber" type="Int16LE" />
+			<element id="msbAEVolumeSetSequenceNumber" label="msbAEVolumeSetSequenceNumber" type="Int16BE" />
+			<element id="lsbAELogicalBlockSize" label="lsbAELogicalBlockSize" type="Int16LE" />
+			<element id="msbAELogicalBlockSize" label="msbAELogicalBlockSize" type="Int16BE" />
+			<element id="lsbAEPathTableSize" label="lsbAEPathTableSize" type="Int32LE" />
+			<element id="msbAEPathTableSize" label="msbAEPathTableSize" type="Int32BE" />
+			<element id="lsbAETypeLMandatoryPathTable" label="lsbAETypeLMandatoryPathTable" type="Int32LE" />
+			<element id="lsbAETypeLOptionalPathTable" label="lsbAETypeLOptionalPathTable" type="Int32LE" />
+			<element id="msbAETypeMMandatoryPathTable" label="msbAETypeMMandatoryPathTable" type="Int32BE" />
+			<element id="msbAETypeMOptionalPathTable" label="msbAETypeMOptionalPathTable" type="Int32BE" />
+			<element id="rootDirectoryRecord" label="rootDirectoryRecord" type="byte" count="34" />
+			<element id="volumeSetIdentifier" label="volumeSetIdentifier" type="char" count="128" />
+			<element id="publisherIdentifier" label="publisherIdentifier" type="char" count="128" />
+			<element id="dataPreparerIdentifier" label="dataPreparerIdentifier" type="char" count="128" />
+			<element id="applicationIdentifier" label="applicationIdentifier" type="char" count="128" />
+			<element id="copyrightFileIdentifier" label="copyrightFileIdentifier" type="char" count="37" />
+			<element id="abstractFileIdentifier" label="abstractFileIdentifier" type="char" count="37" />
+			<element id="bibliographicFileIdentifier" label="bibliographicFileIdentifier" type="char" count="37" />
+			<element id="volumeCreation" label="volumeCreation" type="struct" ref="ISOTimeStr" />
+			<element id="volumeModification" label="volumeModification" type="struct" ref="ISOTimeStr" />
+			<element id="volumeExpiration" label="volumeExpiration" type="struct" ref="ISOTimeStr" />
+			<element id="volumeEffective" label="volumeEffective" type="struct" ref="ISOTimeStr" />
+			<element id="fileStructureVersion" label="fileStructureVersion" type="byte" />
+			<element id="Reserved4" label="Reserved4" type="byte" />
+			<element id="applicationUse" label="applicationUse" type="byte" count="141" />
+			<element id="xaSignature" label="xaSignature" type="char" count="8" />
+			<element id="xaFlags" label="xaFlags" type="byte" count="2" />
+			<element id="xaStartupDir" label="xaStartupDir" type="char" count="8" />
+			<element id="xaReserved" label="xaReserved" type="byte" count="8" />
+			<element id="applicationUse2" label="applicationUse2" type="byte" count="345" view="hidden" />
+			<element id="futureStandardization" label="futureStandardization" type="byte" count="653" view="hidden" />
+        </structure>
+        <structure id="VolumeDescriptorSetTerminator" label="VolumeDescriptorSetTerminator">
+			<element id="descriptorType" label="descriptorType" type="UInt8">
+					 Must be 255 
+			</element>
+			<element id="standardIdentifier" label="standardIdentifier" type="char" count="5">
+					 Must be "CD001" 
+			</element>
+			<element id="descriptorVersion" label="descriptorVersion" type="UInt8">
+					 Must be 1 
+			</element>
+			<element id="futureStandardization" label="futureStandardization" type="byte" count="2041" view="hidden">
+					 Must be 0's 
+			</element>
+        </structure>
+
+		<macro id="PathTableRecord">
+			<element id="directoryIdentifierLength" label="directoryIdentifierLength" type="UInt8">
+					 Length of directory identifier 
+			</element>
+			<element id="extendedAttributeLength" label="extendedAttributeLength" type="UInt8">
+					 Extended Attribute Record Length 
+			</element>
+			<element id="dirLocation" label="dirLocation" type="Int32">
+					 1st logical block where directory is stored 
+			</element>
+			<element id="parentDirNum" label="parentDirNum" type="Int16">
+					 Parent directory number 
+			</element>
+			<element id="directoryIdentifier" label="directoryIdentifier" type="pstring" />
+			<element id="padding" label="padding" type="byte" count="%2" />
+		</macro>
+		<endianness type="big-endian">
+			<structure id="PathTableRecordBE" label="PathTableRecord">
+				<use-macro ref="PathTableRecord" />
+			</structure>
+		</endianness>
+		<endianness type="little-endian">
+			<structure id="PathTableRecordLE" label="PathTableRecord">
+				<use-macro ref="PathTableRecord" />
+			</structure>
+		</endianness>
+
+        <structure id="AppleExtension" label="AppleExtension">
+			<element id="signature" label="signature" type="char" count="2">
+					 $41 $41 - 'AA' famous value 
+			</element>
+			<element id="extensionLength" label="extensionLength" type="UInt8">
+					 $0E for this ID 
+			</element>
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 02 = HFS 
+			</element>
+			<element id="fileType" label="fileType" type="byte" count="4">
+					 such as 'TEXT' or 'STAK'       !TT_Intel - test if these need swapping 
+			</element>
+			<element id="fileCreator" label="fileCreator" type="byte" count="4">
+					 such as 'hscd' or 'WILD' 
+			</element>
+			<element id="finderFlags" label="finderFlags" type="UInt16BE" />
+        </structure>
+        <structure id="XASystemUse" label="XASystemUse">
+			<element id="ownerID" label="ownerID" type="Int32BE" />
+			<element id="attributes" label="attributes" type="UInt16BE" />
+			<element id="signature" label="signature" type="char" count="2">
+					 XA 
+			</element>
+			<element id="fileNumber" label="fileNumber" type="UInt8">
+					 0 for non-interleaved files 
+			</element>
+			<element id="reserved1" label="reserved1" type="UInt8">
+					 0 
+			</element>
+			<element id="reserved" label="reserved" type="UInt8" count="4">
+					 0 
+			</element>
+		</structure>
+		<structure id="DirectoryRecord" label="DirectoryRecord">
+			<element id="directoryRecordLength" label="directoryRecordLength" type="UInt8">
+					 directory record length  
+			</element>
+			<element id="extendedAttributeLength" label="extendedAttributeLength" type="UInt8">
+					 Extended Attribute Record Length  
+			</element>
+			<element id="lsbStart" label="lsbStart" type="Int32LE" />
+			<element id="msbStart" label="msbStart" type="Int32BE">
+					 1st logical block where file starts 
+			</element>
+			<element id="lsbDataLength" label="lsbDataLength" type="UInt32LE" />
+			<element id="msbDataLength" label="msbDataLength" type="UInt32BE" />
+			<element id="date" label="date" type="struct" ref="ISOTimeBin" />
+			<element id="fileFlags" label="fileFlags" type="UInt8">
+			</element>
+			<element id="interleaveSize" label="interleaveSize" type="UInt8" />
+			<element id="interleaveSkip" label="interleaveSkip" type="UInt8" />
+			<element id="lsbVolSetSeqNum" label="lsbVolSetSeqNum" type="Int16LE" />
+			<element id="msbVolSetSeqNum" label="msbVolSetSeqNum" type="Int16BE">
+					 Which volume in volume set contains this file. 
+			</element>
+			<element id="identifier" label="identifier" type="pstring" />
+			<element id="padding" label="padding" type="byte" count="%2" />
+			<element id="extensions" label="extensions" type="byte" count="$extendedAttributeLength" />
+			<!--
+			<element id="xaSystemUse" label="xaSystemUse" type="struct" ref="XASystemUse">
+					 CD-ROM XA system use field 
+			</element>
+			<element id="apple" label="apple" type="struct" ref="AppleExtension">
+					 Apple Extensions 
+			</element>
+			-->
+		</structure>
+		<structure id="tCopyrightManagementInfo" label="tCopyrightManagementInfo">
+			<element id="cgmsInfo" label="cgmsInfo" type="UInt8" />
+			<element id="dataStructureType" label="dataStructureType" type="UInt8" />
+			<element id="protectionSystemType" label="protectionSystemType" type="UInt8" />
+			<element id="reserved" label="reserved" type="UInt8" count="3" />
+		</structure>
+		<structure id="PosixRecord" label="PosixRecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8" />
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 1 
+			</element>
+			<element id="contents" label="contents" type="UInt8" count="ElemInt(&quot;extensionLength&quot;)-ElemOfs(&quot;contents&quot;)" />
+		</structure>
+		<structure id="SPRecord" label="SPRecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8">
+					 7 
+			</element>
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 1 
+			</element>
+			<element id="checkBytes" label="checkBytes" type="UInt8" count="2" />
+			<element id="skipBytes" label="skipBytes" type="UInt8">
+					 0 
+			</element>
+		</structure>
+		<structure id="ERRecord" label="ERRecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8" />
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 1 
+			</element>
+			<element id="idLen" label="idLen" type="UInt8" />
+			<element id="descriptorLen" label="descriptorLen" type="UInt8" />
+			<element id="sourceLen" label="sourceLen" type="UInt8" />
+			<element id="extVersion" label="extVersion" type="UInt8">
+					 1 
+			</element>
+			<element id="content" label="content" type="byte" count="ElemInt(&quot;extensionLength&quot;)-ElemOfs(&quot;content&quot;)" />
+			<!-- not sure about these:
+			<element id="identifier" label="identifier" type="pstring" />
+			<element id="descriptor" label="descriptor" type="pstring" />
+			<element id="source" label="source" type="UInt8" count="" />
+			-->
+		</structure>
+		<structure id="PXRecord" label="PXRecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8">
+					 36 or 44 
+			</element>
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 01 
+			</element>
+			<element id="lsb32FileMode" label="lsb32FileMode" type="Int32le">
+					 see stat(2) 
+			</element>
+			<element id="msb32FileMode" label="msb32FileMode" type="Int32be" />
+			<element id="lsb32Links" label="lsb32Links" type="Int32le" />
+			<element id="msb32Links" label="msb32Links" type="Int32be" />
+			<element id="lsb32UserID" label="lsb32UserID" type="Int32le" />
+			<element id="msb32UserID" label="msb32UserID" type="Int32be" />
+			<element id="lsb32GroupID" label="lsb32GroupID" type="Int32le" />
+			<element id="msb32GroupID" label="msb32GroupID" type="Int32be" />
+			<element id="lsb32NodeID" label="lsb32NodeID" type="Int32le" />
+			<element id="msb32NodeID" label="msb32NodeID" type="Int32be" />
+		</structure>
+		<structure id="NMRecord" label="NMRecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8" />
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 1 
+			</element>
+			<element id="flags" label="flags" type="UInt8" />
+			<element id="content" label="content" type="byte" count="ElemInt(&quot;extensionLength&quot;)-ElemOfs(&quot;content&quot;)" />
+		</structure>
+		<structure id="SLComponent" label="SLComponent">
+			<element id="flags" label="flags" type="UInt8" />
+			<element id="len" label="len" type="UInt8" />
+			<element id="content" label="content" type="UInt8" count="ElemInt(&quot;len&quot;)-ElemOfs(&quot;content&quot;)" />
+		</structure>
+		<structure id="SLRecord" label="SLRecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8" />
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 1 
+			</element>
+			<element id="flags" label="flags" type="UInt8" />
+			<element id="content" label="content" type="byte" count="ElemInt(&quot;extensionLength&quot;)-ElemOfs(&quot;content&quot;)" />
+		</structure>
+		<structure id="TFRecord" label="TFRecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8" />
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 1 
+			</element>
+			<element id="flags" label="flags" type="UInt8">
+			</element>
+			<element id="timeStamps" label="timeStamps" type="struct" ref="ISOTimeBin" count="(ElemInt(&quot;extensionLength&quot;)-ElemOfs(&quot;timeStamps&quot;)) / ElemSize(&quot;timeStamps&quot;)" />
+		</structure>
+		<structure id="CERecord" label="CERecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8">
+					 28 
+			</element>
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 01 
+			</element>
+			<element id="lsb32Block" label="lsb32Block" type="Int32le" />
+			<element id="msb32Block" label="msb32Block" type="Int32be" />
+			<element id="lsb32Offset" label="lsb32Offset" type="Int32le" />
+			<element id="msb32Offset" label="msb32Offset" type="Int32be" />
+			<element id="lsb32Len" label="lsb32Len" type="Int32le" />
+			<element id="msb32Len" label="msb32Len" type="Int32be" />
+		</structure>
+		<structure id="RRRecord" label="RRRecord">
+			<element id="signature" label="signature" type="char" count="2" />
+			<element id="extensionLength" label="extensionLength" type="UInt8">
+					 5 
+			</element>
+			<element id="systemUseID" label="systemUseID" type="UInt8">
+					 1 
+			</element>
+			<element id="flags" label="flags" type="UInt8">
+			</element>
+		</structure>
+
+		<template id="PVD" label="Primary Volume Descriptor" >
+			<match kind="content">
+				<code type="bool-expr">
+					ElemInt("descriptorType") = 1 and ElemInt("descriptorVersion") = 1 and ElemStr("standardIdentifier") = "CD001"
+				</code>
+			</match>
+			<structure ref="VolumeDescriptor" />
+		</template>
+		<template id="SVD" label="Secondary Volume Descriptor" >
+			<match kind="content">
+				<code type="bool-expr">
+					ElemInt("descriptorType") = 2 and ElemInt("descriptorVersion") = 1 and ElemStr("standardIdentifier") = "CD001"
+				</code>
+			</match>
+			<structure ref="VolumeDescriptor" />
+		</template>
+		<template id="VolumeDescriptorSetTerminator">
+			<match kind="content">
+				<code type="bool-expr">
+					ElemInt("descriptorType") = 255 and ElemInt("descriptorVersion") = 1 and ElemStr("standardIdentifier") = "CD001"
+				</code>
+			</match>
+			<structure ref="VolumeDescriptorSetTerminator" />
+		</template>
+		<template id="PathTableRecordBE">
+			<structure ref="PathTableRecordBE" />
+		</template>
+		<template id="PathTableRecordLE">
+			<structure ref="PathTableRecordLE" />
+		</template>
+		<template id="DirectoryRecord">
+			<structure ref="DirectoryRecord" />
+		</template>
+		<template id="tCopyrightManagementInfo">
+			<structure ref="tCopyrightManagementInfo" />
+		</template>
+		<template id="PosixRecord">
+			<structure ref="PosixRecord" />
+		</template>
+		<template id="SPRecord">
+			<structure ref="SPRecord" />
+		</template>
+		<template id="ERRecord">
+			<structure ref="ERRecord" />
+		</template>
+		<template id="PXRecord">
+			<structure ref="PXRecord" />
+		</template>
+		<template id="NMRecord">
+			<structure ref="NMRecord" />
+		</template>
+		<template id="SLComponent">
+			<structure ref="SLComponent" />
+		</template>
+		<template id="SLRecord">
+			<structure ref="SLRecord" />
+		</template>
+		<template id="TFRecord">
+			<structure ref="TFRecord" />
+		</template>
+		<template id="CERecord">
+			<structure ref="CERecord" />
+		</template>
+		<template id="RRRecord">
+			<structure ref="RRRecord" />
+        </template>
+
+		<context id="disk" label="ISO 9660 Disk" forTypes="">	<!-- empty types mean the global space, e.g. disk -->
+			<validation>
+				<code type="bool-function">
+					return false // still pending
+				</code>
+			</validation>
+		</context>
+
+	</namespace>
+
+	<namespace id="diskimg" label="Apple disk image">
+		<endianness type="big-endian">
+
+			<structure id="SparseFileHeaderNode" label="SparseFileHeaderNode">
+				<element id="fSignature" label="fSignature" type="char" count="4">'sprs'</element>
+				<element id="fVersion" label="fVersion" type="UInt32BE" />
+				<element id="fBandSize" label="fBandSize" type="UInt32BE" />
+				<element id="fFlags" label="fFlags" type="UInt32BE" />
+				<element id="fOldTotalSectorCount" label="fOldTotalSectorCount" type="UInt32BE" />
+				<element id="fNextIndexNodeOffset" label="fNextIndexNodeOffset" type="UInt64BE" />
+				<element id="fNewTotalSectorCount" label="fNewTotalSectorCount" type="UInt64BE" />
+				<element id="reserved_4" label="reserved_4" type="UInt32BE" count="7" />
+				<element id="fBandNumber" label="fBandNumber" type="UInt32BE" count="0x70" />
+			</structure>
+
+			<structure id="SparseFileIndexNode" label="SparseFileIndexNode">
+				<element id="fSignature" label="fSignature" type="char" count="4">'sprs'</element>
+				<element id="fIndexNodeNumber" label="fIndexNodeNumber" type="UInt32BE" />
+				<element id="fFlags" label="fFlags" type="UInt32BE" />
+				<element id="fNextIndexNodeOffset" label="fNextIndexNodeOffset" type="UInt64BE" />
+				<element id="reserved_4" label="reserved_4" type="UInt32BE" count="7" />
+				<element id="fBandNumber" label="fBandNumber" type="UInt32BE" count="0x74" />
+			</structure>
+		
+			<template id="SparseFileHeaderNode">
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentBlockNumber=0
+					</code>
+				</match>
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("fSignature") = "sprs" and ElemInt("fVersion") = 3
+					</code>
+				</match>
+				<structure ref="SparseFileHeaderNode" />
+			</template>
+
+			<template id="SparseFileIndexNode">
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentBlockNumber>0
+					</code>
+				</match>
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("fSignature") = "sprs"
+					</code>
+				</match>
+				<structure ref="SparseFileIndexNode" />
+			</template>
+
+			<context id="file" label="Sparse Image" forTypes="">	<!-- empty types mean the global space -->
+
+				<validation>
+					<code type="bool-function">
+						if Container_ReadBlock(0) then
+							SetTemplate("SparseFileHeaderNode")
+							return ElemStr("fSignature") = "sprs" and ElemInt("fVersion") = 3
+						end
+					</code>
+				</validation>
+
+			</context>
+
+		</endianness>
+	</namespace>
+
+	<namespace id="udf" label="UDF">
+		<endianness type="little-endian">
+
+			<structure id="lb_addr" label="lb_addr">
+					 ISO 13346 4/7.1 
+				<element id="LogicalBlockNumber" label="LogicalBlockNumber" type="Uint32" />
+				<element id="PartitionReferenceNumber" label="PartitionReferenceNumber" type="Uint16" />
+			</structure>
+			<structure id="long_ad" label="long_ad">
+					 ISO 13346 4/14.14.2 
+				<element id="ExtentLength" label="ExtentLength" type="Uint32">
+					 Low 30 bits are length in bytes, upper two bits are flags
+				</element>
+				<element id="ExtentLocation" label="ExtentLocation" type="struct" ref="lb_addr" />
+				<element id="ImplementationUse" label="ImplementationUse" type="Byte" count="6" />
+			</structure>
+			<structure id="extent_ad" label="extent_ad">
+				<element id="len" label="ExtentLength" type="uint32" view="format=hex"/>
+				<element id="loc" label="ExtentLocation" type="uint32" view="format=dec"/>
+			</structure>
+			<structure id="short_ad" label="short_ad">
+					 ISO 13346 4/14.14.1 
+				<element id="ExtentLength" label="ExtentLength" type="Uint32" view="format=hex">
+					 Low 30 bits are length in bytes, upper two bits are flags
+				</element>
+				<element id="ExtentPosition" label="ExtentPosition" type="Uint32" view="format=dec">
+					 Logical block number
+				</element>
+			</structure>
+			<structure id="charspec" label="charspec">
+					 ECMA 167 1/7.2.1 
+				<element id="CharacterSetType" label="CharacterSetType" type="Uint8" />
+				<element id="CharacterSetInfo" label="CharacterSetInfo" type="char" count="63" />
+			</structure>
+			<structure id="timestamp" label="timestamp">
+					 ECMA 167 1/7.3 
+				<element id="TypeAndTimezone" label="TypeAndTimezone" type="Uint16" />
+				<element id="Year" label="Year" type="Int16" />
+				<element id="Month" label="Month" type="Uint8" />
+				<element id="Day" label="Day" type="Uint8" />
+				<element id="Hour" label="Hour" type="Uint8" />
+				<element id="Minute" label="Minute" type="Uint8" />
+				<element id="Second" label="Second" type="Uint8" />
+				<element id="Centiseconds" label="Centiseconds" type="Uint8" />
+				<element id="HundredsofMicroseconds" label="HundredsofMicroseconds" type="Uint8" />
+				<element id="Microseconds" label="Microseconds" type="Uint8" />
+			</structure>
+			<structure id="EntityID" label="EntityID">
+					 ECMA 167 1/7.4 
+				<element id="Flags" label="Flags" type="Uint8" />
+				<element id="Identifier" label="Identifier" type="cstring" count="23" />
+				<element id="IdentifierSuffix" label="IdentifierSuffix" type="char" count="8" />
+			</structure>
+			<structure id="tag" label="tag">
+					 ECMA 167 3/7.2 
+				<element id="TagIdentifier" label="TagIdentifier" type="Uint16" />
+				<element id="DescriptorVersion" label="DescriptorVersion" type="Uint16" />
+				<element id="TagChecksum" label="TagChecksum" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="byte" />
+				<element id="TagSerialNumber" label="TagSerialNumber" type="Uint16" />
+				<element id="DescriptorCRC" label="DescriptorCRC" type="Uint16" />
+				<element id="DescriptorCRCLength" label="DescriptorCRCLength" type="Uint16" />
+				<element id="TagLocation" label="TagLocation" type="Uint32" />
+			</structure>
+
+			<template id="tag" label="Tag Descriptor">
+				<structure ref="tag" />
+			</template>
+
+
+			<structure id="PrimaryVolumeDescriptor" label="PrimaryVolumeDescriptor">
+					 ECMA 167 3/10.1 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="VolumeDescriptorSequenceNumber" label="VolumeDescriptorSequenceNumber" type="Uint32" />
+				<element id="PrimaryVolumeDescriptorNumber" label="PrimaryVolumeDescriptorNumber" type="Uint32" />
+				<element id="VolumeIdentifier" label="VolumeIdentifier" type="dstring" count="32" />
+				<element id="VolumeSequenceNumber" label="VolumeSequenceNumber" type="Uint16" />
+				<element id="MaximumVolumeSequenceNumber" label="MaximumVolumeSequenceNumber" type="Uint16" />
+				<element id="InterchangeLevel" label="InterchangeLevel" type="Uint16" />
+				<element id="MaximumInterchangeLevel" label="MaximumInterchangeLevel" type="Uint16" />
+				<element id="CharacterSetList" label="CharacterSetList" type="Uint32" />
+				<element id="MaximumCharacterSetList" label="MaximumCharacterSetList" type="Uint32" />
+				<element id="VolumeSetIdentifier" label="VolumeSetIdentifier" type="dstring" count="128" />
+				<element id="DescriptorCharacterSet" label="DescriptorCharacterSet" type="struct" ref="charspec" />
+				<element id="ExplanatoryCharacterSet" label="ExplanatoryCharacterSet" type="struct" ref="charspec" />
+				<element id="VolumeAbstract" label="VolumeAbstract" type="struct" ref="extent_ad" />
+				<element id="VolumeCopyrightNotice" label="VolumeCopyrightNotice" type="struct" ref="extent_ad" />
+				<element id="ApplicationIdentifier" label="ApplicationIdentifier" type="struct" ref="EntityID" />
+				<element id="RecordingDateandTime" label="RecordingDateandTime" type="struct" ref="timestamp" />
+				<element id="ImplementationIdentifier" label="ImplementationIdentifier" type="struct" ref="EntityID" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="64" />
+				<element id="PredecessorVolumeDescriptorSequenceLocation" label="PredecessorVolumeDescriptorSequenceLocation" type="Uint32" />
+				<element id="Flags" label="Flags" type="Uint16" />
+				<element id="Reserved" label="Reserved" type="byte" count="22" view="hidden" />
+			</structure>
+
+			
+			<select id="Part-switch">
+				<code type="bool-function">
+					PropInt("mapType") = Data_uint8(0)
+					return true
+				</code>
+				<element type="struct" ref="Type1PartitionMap">
+					<match>
+						<code type="bool-function">
+							return PropInt("mapType") = 1
+						</code>
+					</match>
+				</element>
+				<element type="struct" ref="Type2PartitionMap">
+					<match>
+						<code type="bool-function">
+							return PropInt("mapType") = 2
+						</code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="LogicalVolumeDescriptor" label="LogicalVolumeDescriptor">
+					 ECMA 167 3/10.6 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="VolumeDescriptorSequenceNumber" label="VolumeDescriptorSequenceNumber" type="Uint32" />
+				<element id="DescriptorCharacterSet" label="DescriptorCharacterSet" type="struct" ref="charspec" />
+				<element id="LogicalVolumeIdentifier" label="LogicalVolumeIdentifier" type="dstring" count="128" />
+				<element id="LogicalBlockSize" label="LogicalBlockSize" type="Uint32" />
+				<element id="DomainIdentifier" label="DomainIdentifier" type="struct" ref="EntityID" />
+				<element id="LogicalVolumeContentsUse" label="LogicalVolumeContentsUse" type="byte" count="16" />
+				<element id="MapTableLength" label="MapTableLength" type="Uint32" />
+				<element id="NumberofPartitionMaps" label="NumberofPartitionMaps" type="Uint32" />
+				<element id="ImplementationIdentifier" label="ImplementationIdentifier" type="struct" ref="EntityID" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="128" />
+				<element id="IntegritySequenceExtent" label="IntegritySequenceExtent" type="struct" ref="extent_ad" />
+				<element id="PartitionMaps" label="PartitionMaps" type="select" ref="Part-switch" count="$NumberofPartitionMaps" maxsize="$MapTableLength" />
+			</structure>
+			
+			<structure id="Type1PartitionMap" label="Type1PartitionMap">
+					 ISO 13346 3/10.7 
+				<element id="PartitionMapType" label="PartitionMapType" type="Uint8" />
+				<element id="PartitionMapLength" label="PartitionMapLength" type="Uint8" />
+				<element id="VolumeSequenceNumber" label="VolumeSequenceNumber" type="Uint16" />
+				<element id="PartitionNumber" label="PartitionNumber" type="Uint16" />
+			</structure>
+			<structure id="Type2PartitionMap" label="Type2PartitionMap">
+				<element id="PartitionMapType" label="PartitionMapType" type="Uint8" />
+				<element id="PartitionMapLength" label="PartitionMapLength" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="Uint16" />
+				<element id="PartitionTypeIdentifier" label="PartitionTypeIdentifier" type="struct" ref="EntityID" />
+				<element id="VolumeSequenceNumber" label="VolumeSequenceNumber" type="Uint16" />
+				<element id="PartitionNumber" label="PartitionNumber" type="Uint16" />
+			</structure>
+			<structure id="VirtualPartitionMap" label="VirtualPartitionMap">
+					 CD-UDF 4.1.4 
+				<element id="PartitionMapType" label="PartitionMapType" type="Uint8" />
+				<element id="PartitionMapLength" label="PartitionMapLength" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="Uint16" />
+				<element id="PartitionTypeIdentifier" label="PartitionTypeIdentifier" type="struct" ref="EntityID">
+					 "*UDF Virtual Partition"
+				</element>
+				<element id="VolumeSequenceNumber" label="VolumeSequenceNumber" type="Uint16" />
+				<element id="PartitionNumber" label="PartitionNumber" type="Uint16" />
+				<element id="reserved" label="reserved" type="Byte" count="24" view="hidden" />
+			</structure>
+			<structure id="MetadataPartitionMap" label="MetadataPartitionMap">
+					 UDF 2.60: 2.2.10 
+				<element id="PartitionMapType" label="PartitionMapType" type="Uint8" />
+				<element id="PartitionMapLength" label="PartitionMapLength" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="Uint16" />
+				<element id="PartitionTypeIdentifier" label="PartitionTypeIdentifier" type="struct" ref="EntityID">
+					 "*UDF Metadata Partition"
+				</element>
+				<element id="VolumeSequenceNumber" label="VolumeSequenceNumber" type="Uint16" />
+				<element id="PartitionNumber" label="PartitionNumber" type="Uint16" />
+				<element id="MetadataFileLocation" label="MetadataFileLocation" type="Uint32" />
+				<element id="MetadataMirrorFileLocation" label="MetadataMirrorFileLocation" type="Uint32" />
+				<element id="MetadataBitmapFileLocation" label="MetadataBitmapFileLocation" type="Uint32" />
+				<element id="AllocationUnitSize" label="AllocationUnitSize" type="Uint32" />
+				<element id="AlignmentUnitSize" label="AlignmentUnitSize" type="Uint16" />
+				<element id="Flags" label="Flags" type="Uint8" />
+				<element id="reserved" label="reserved" type="Byte" count="5" view="hidden" />
+			</structure>
+			<structure id="SparablePartitionMap" label="SparablePartitionMap">
+					 UDF 2.60: 2.2.9 
+				<element id="PartitionMapType" label="PartitionMapType" type="Uint8" />
+				<element id="PartitionMapLength" label="PartitionMapLength" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="Uint16" />
+				<element id="PartitionTypeIdentifier" label="PartitionTypeIdentifier" type="struct" ref="EntityID">
+					 "*UDF Sparable Partition"
+				</element>
+				<element id="VolumeSequenceNumber" label="VolumeSequenceNumber" type="Uint16" />
+				<element id="PartitionNumber" label="PartitionNumber" type="Uint16" />
+				<element id="PacketLength" label="PacketLength" type="Uint16" />
+				<element id="NumberOfSparingTables" label="NumberOfSparingTables" type="Uint8" />
+				<element id="Reserved2" label="Reserved2" type="Uint8" />
+				<element id="TableSize" label="TableSize" type="Uint32" />
+				<element id="Tables" label="Tables" type="Uint32" count="$TableSize" />
+			</structure>
+
+			<structure id="UnallocatedSpaceDesc" label="Unallocated Space Descriptor">
+					 ECMA 167 3/10.8 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="VolumeDescriptorSequenceNumber" label="VolumeDescriptorSequenceNumber" type="Uint32" />
+				<element id="NumberofAllocationDescriptors" label="NumberofAllocationDescriptors" type="Uint32" />
+				<element id="AllocationDescriptors" label="AllocationDescriptors" type="struct" ref="extent_ad" count="$NumberofAllocationDescriptors" />
+			</structure>
+			<structure id="LogicalVolumeIntegrityDesc" label="Logical Volume Integrity Descriptor">
+					 ECMA 167 3/10.10 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="RecordingDateAndTime" label="RecordingDateAndTime" type="struct" ref="timestamp" />
+				<element id="IntegrityType" label="IntegrityType" type="Uint32" />
+				<element id="NextIntegrityExtent" label="NextIntegrityExtent" type="struct" ref="extent_ad" />
+				<element id="LogicalVolumeContentsUse" label="LogicalVolumeContentsUse" type="byte" count="32" />
+				<element id="NumberOfPartitions" label="NumberOfPartitions" type="Uint32" />
+				<element id="LengthOfImplementationUse" label="LengthOfImplementationUse" type="Uint32">
+					 = L_IU 
+				</element>
+				<element id="FreeSpaceTable" label="FreeSpaceTable" type="Uint32" count="$NumberOfPartitions" />
+				<element id="SizeTable" label="SizeTable" type="Uint32" count="$NumberOfPartitions" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="$LengthOfImplementationUse" />
+			</structure>
+			<structure id="ImpUseVolumeDescriptor" label="Implementation Use Volume Descriptor">
+					 ECMA 167 3/10.4 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="VolumeDescriptorSequenceNumber" label="VolumeDescriptorSequenceNumber" type="Uint32" />
+				<element id="ImplementationIdentifier" label="ImplementationIdentifier" type="struct" ref="EntityID" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="460" />
+			</structure>
+			<structure id="LVInformation" label="LVInformation">
+				<element id="LVICharset" label="LVICharset" type="struct" ref="charspec" />
+				<element id="LogicalVolumeIdentifier" label="LogicalVolumeIdentifier" type="dstring" count="128" />
+				<element id="LVInfo1" label="LVInfo1" type="dstring" count="36" />
+				<element id="LVInfo2" label="LVInfo2" type="dstring" count="36" />
+				<element id="LVInfo3" label="LVInfo3" type="dstring" count="36" />
+				<element id="ImplementationID" label="ImplementationID" type="struct" ref="EntityID" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="128" />
+			</structure>
+			<structure id="PartitionDescriptor" label="PartitionDescriptor">
+					 ECMA 167 3/10.5 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="VolumeDescriptorSequenceNumber" label="VolumeDescriptorSequenceNumber" type="Uint32" />
+				<element id="PartitionFlags" label="PartitionFlags" type="Uint16" />
+				<element id="PartitionNumber" label="PartitionNumber" type="Uint16" />
+				<element id="PartitionContents" label="PartitionContents" type="struct" ref="EntityID" />
+				<element id="PartitionContentsUse" label="PartitionContentsUse" type="byte" count="128" />
+				<element id="AccessType" label="AccessType" type="Uint32" />
+				<element id="PartitionStartingLocation" label="PartitionStartingLocation" type="Uint32" />
+				<element id="PartitionLength" label="PartitionLength" type="Uint32" />
+				<element id="ImplementationIdentifier" label="ImplementationIdentifier" type="struct" ref="EntityID" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="128" />
+				<element id="Reserved" label="Reserved" type="byte" count="156" view="hidden" />
+			</structure>
+			<structure id="FileSetDescriptor" label="FileSetDescriptor">
+					 ECMA 167 4/14.1 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="RecordingDateandTime" label="RecordingDateandTime" type="struct" ref="timestamp" />
+				<element id="InterchangeLevel" label="InterchangeLevel" type="Uint16" />
+				<element id="MaximumInterchangeLevel" label="MaximumInterchangeLevel" type="Uint16" />
+				<element id="CharacterSetList" label="CharacterSetList" type="Uint32" />
+				<element id="MaximumCharacterSetList" label="MaximumCharacterSetList" type="Uint32" />
+				<element id="FileSetNumber" label="FileSetNumber" type="Uint32" />
+				<element id="FileSetDescriptorNumber" label="FileSetDescriptorNumber" type="Uint32" />
+				<element id="LogicalVolumeIdentifierCharacterSet" label="LogicalVolumeIdentifierCharacterSet" type="struct" ref="charspec" />
+				<element id="LogicalVolumeIdentifier" label="LogicalVolumeIdentifier" type="dstring" count="128" />
+				<element id="FileSetCharacterSet" label="FileSetCharacterSet" type="struct" ref="charspec" />
+				<element id="FileSetIdentifier" label="FileSetIdentifier" type="dstring" count="32" />
+				<element id="CopyrightFileIdentifier" label="CopyrightFileIdentifier" type="dstring" count="32" />
+				<element id="AbstractFileIdentifier" label="AbstractFileIdentifier" type="dstring" count="32" />
+				<element id="RootDirectoryICB" label="RootDirectoryICB" type="struct" ref="long_ad" />
+				<element id="DomainIdentifier" label="DomainIdentifier" type="struct" ref="EntityID" />
+				<element id="NextExtent" label="NextExtent" type="struct" ref="long_ad" />
+				<element id="SystemStreamDirectoryICB" label="SystemStreamDirectoryICB" type="struct" ref="long_ad" />
+				<element id="Reserved" label="Reserved" type="byte" count="32" view="hidden" />
+			</structure>
+			<structure id="PartitionHeaderDescriptor" label="PartitionHeaderDescriptor">
+					 ECMA 167 4/14.3 
+				<element id="UnallocatedSpaceTable" label="UnallocatedSpaceTable" type="struct" ref="short_ad" />
+				<element id="UnallocatedSpaceBitmap" label="UnallocatedSpaceBitmap" type="struct" ref="short_ad" />
+				<element id="PartitionIntegrityTable" label="PartitionIntegrityTable" type="struct" ref="short_ad" />
+				<element id="FreedSpaceTable" label="FreedSpaceTable" type="struct" ref="short_ad" />
+				<element id="FreedSpaceBitmap" label="FreedSpaceBitmap" type="struct" ref="short_ad" />
+				<element id="Reserved" label="Reserved" type="byte" count="88" view="hidden" />
+			</structure>
+
+			<structure id="FileIdentifierDescriptor" label="FileIdentifierDescriptor">
+					 ECMA 167 4/14.4 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="FileVersionNumber" label="FileVersionNumber" type="Uint16" />
+				<element id="FileCharacteristics" label="FileCharacteristics" type="Uint8" />
+				<element id="LengthofFileIdentifier" label="LengthofFileIdentifier" type="Uint8" />
+				<element id="ICB" label="ICB" type="struct" ref="long_ad" />
+				<element id="LengthOfImplementationUse" label="LengthOfImplementationUse" type="Uint16" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="$LengthOfImplementationUse" />
+				<element id="FileIdentifier" label="FileIdentifier" type="char" count="$LengthofFileIdentifier" />
+				<element id="Padding" label="Padding" type="byte" count="%4" />
+				<summary> <code type="str-expr"> Data_string16be(ElemOfs("FileIdentifier")+1,Max(0,ElemInt("LengthofFileIdentifier")-1), -2) </code> </summary>
+			</structure>
+			<select id="FID-switch">
+				<element type="struct" ref="FileIdentifierDescriptor">
+					<match>
+						<code type="bool-expr">Data_int16(0) = 257</code>
+					</match>
+				</element>
+			</select>
+			<structure id="FID-sequence" label="FIDs">
+				<element type="select" ref="FID-switch" count="*" />
+			</structure>
+
+			<structure id="icbtag" label="icbtag">
+					 ECMA 167 4/14.6 
+				<element id="PriorRecordedNumberofDirectEntries" label="PriorRecordedNumberofDirectEntries" type="Uint32" />
+				<element id="StrategyType" label="StrategyType" type="Uint16" />
+				<element id="StrategyParameter" label="StrategyParameter" type="byte" count="2" />
+				<element id="MaximumNumberofEntries" label="MaximumNumberofEntries" type="Uint16" />
+				<element id="Reserved" label="Reserved" type="byte" />
+				<element id="FileType" label="FileType" type="Uint8" />
+				<element id="ParentICBLocation" label="ParentICBLocation" type="struct" ref="Lb_addr" />
+				<element id="Flags" label="Flags" type="Uint16" />
+			</structure>
+			<structure id="FileEntry" label="File Entry">
+					 ECMA 167 4/14.9 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="ICBTag" label="ICBTag" type="struct" ref="icbtag" />
+				<element id="Uid" label="Uid" type="Uint32" />
+				<element id="Gid" label="Gid" type="Uint32" />
+				<element id="Permissions" label="Permissions" type="Uint32" />
+				<element id="FileLinkCount" label="FileLinkCount" type="Uint16" />
+				<element id="RecordFormat" label="RecordFormat" type="Uint8" />
+				<element id="RecordDisplayAttributes" label="RecordDisplayAttributes" type="Uint8" />
+				<element id="RecordLength" label="RecordLength" type="Uint32" />
+				<element id="InformationLength" label="InformationLength" type="Uint64" />
+				<element id="LogicalBlocksRecorded" label="LogicalBlocksRecorded" type="Uint64" />
+				<element id="AccessTime" label="AccessTime" type="struct" ref="timestamp" />
+				<element id="ModificationTime" label="ModificationTime" type="struct" ref="timestamp" />
+				<element id="AttributeTime" label="AttributeTime" type="struct" ref="timestamp" />
+				<element id="Checkpoint" label="Checkpoint" type="Uint32" />
+				<element id="ExtendedAttributeICB" label="ExtendedAttributeICB" type="struct" ref="long_ad" />
+				<element id="ImplementationIdentifier" label="ImplementationIdentifier" type="struct" ref="EntityID" />
+				<element id="UniqueID" label="UniqueID" type="Uint64" />
+				<element id="LengthofExtendedAttributes" label="LengthofExtendedAttributes" type="Uint32" />
+				<element id="LengthofAllocationDescriptors" label="LengthofAllocationDescriptors" type="Uint32" />
+				<element id="ExtendedAttributes" label="ExtendedAttributes" type="byte" count="$LengthofExtendedAttributes" />
+				<element id="AllocationDescriptors" label="AllocationDescriptors" type="struct" ref="short_ad" count="*" maxsize="$LengthofAllocationDescriptors" />
+			</structure>
+			<structure id="ExtendedFileEntry" label="Extended File Entry">
+					 ISO 13346 4/14.17 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag">=266</element>
+				<element id="ICBTag" label="ICBTag" type="struct" ref="icbtag" />
+				<element id="Uid" label="Uid" type="Uint32" />
+				<element id="Gid" label="Gid" type="Uint32" />
+				<element id="Permissions" label="Permissions" type="Uint32" />
+				<element id="FileLinkCount" label="FileLinkCount" type="Uint16" />
+				<element id="RecordFormat" label="RecordFormat" type="Uint8" />
+				<element id="RecordDisplayAttributes" label="RecordDisplayAttributes" type="Uint8" />
+				<element id="RecordLength" label="RecordLength" type="Uint32" />
+				<element id="InformationLength" label="InformationLength" type="Uint64" />
+				<element id="ObjectSize" label="ObjectSize" type="Uint64" />
+				<element id="LogicalBlocksRecorded" label="LogicalBlocksRecorded" type="Uint64" />
+				<element id="AccessTime" label="AccessTime" type="struct" ref="timestamp" />
+				<element id="ModificationTime" label="ModificationTime" type="struct" ref="timestamp" />
+				<element id="CreationTime" label="CreationTime" type="struct" ref="timestamp" />
+				<element id="AttributeTime" label="AttributeTime" type="struct" ref="timestamp" />
+				<element id="Checkpoint" label="Checkpoint" type="Uint32" />
+				<element id="Reserved" label="Reserved" type="Uint8" count="4" />
+				<element id="ExtendedAttributeICB" label="ExtendedAttributeICB" type="struct" ref="long_ad" />
+				<element id="StreamDirectoryICB" label="StreamDirectoryICB" type="struct" ref="long_ad" />
+				<element id="ImplementationIdentifier" label="ImplementationIdentifier" type="struct" ref="EntityID" />
+				<element id="UniqueID" label="UniqueID" type="Uint64" />
+				<element id="LengthofExtendedAttributes" label="LengthofExtendedAttributes" type="Uint32" />
+				<element id="LengthofAllocationDescriptors" label="LengthofAllocationDescriptors" type="Uint32" />
+				<element id="ExtendedAttributes" label="ExtendedAttributes" type="byte" count="$LengthofAllocationDescriptors" />
+				<element id="AllocationDescriptors" label="AllocationDescriptors" type="struct" ref="short_ad" count="*" maxsize="$LengthofAllocationDescriptors" />
+			</structure>
+			<structure id="UnallocatedSpaceEntry" label="UnallocatedSpaceEntry">
+					 ECMA 167 4/14.11 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="ICBTag" label="ICBTag" type="struct" ref="icbtag" />
+				<element id="LengthofAllocationDescriptors" label="LengthofAllocationDescriptors" type="Uint32" />
+				<element id="AllocationDescriptors" label="AllocationDescriptors" type="byte" count="$LengthofAllocationDescriptors" />
+			</structure>
+			<structure id="SpaceBitmap" label="SpaceBitmap">
+					 ECMA 167 4/14.12 
+				<element id="tag" label="DescriptorTag" type="struct" ref="Tag" />
+				<element id="NumberOfBits" label="NumberOfBits" type="Uint32" />
+				<element id="NumberOfBytes" label="NumberOfBytes" type="Uint32" />
+				<element id="Bitmap" label="Bitmap" type="byte" count="$NumberOfBytes" />
+			</structure>
+			<structure id="AllocationExtentDescriptor" label="AllocationExtentDescriptor">
+					 ECMA 167 4/14.5 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="PreviousAllocationExtentLocation" label="PreviousAllocationExtentLocation" type="Uint32" />
+				<element id="LengthOfAllocationDescriptors" label="LengthOfAllocationDescriptors" type="Uint32" />
+			</structure>
+			<structure id="PathComponent" label="PathComponent">
+					 ECMA 167 4/14.16.1 
+				<element id="ComponentType" label="ComponentType" type="Uint8" />
+				<element id="LengthofComponentIdentifier" label="LengthofComponentIdentifier" type="Uint8" />
+				<element id="ComponentFileVersionNumber" label="ComponentFileVersionNumber" type="Uint16" />
+				<element id="ComponentIdentifier" label="ComponentIdentifier" type="char" count="$LengthofComponentIdentifier" />
+			</structure>
+			<structure id="LogicalVolumeHeaderDesc" label="LogicalVolumeHeaderDesc">
+					 ECMA 167 4/14.15 
+				<element id="UniqueID" label="UniqueID" type="Uint64" />
+				<element id="Reserved" label="Reserved" type="byte" count="24" view="hidden" />
+			</structure>
+			<structure id="ExtendedAttributeHeaderDescriptor" label="ExtendedAttributeHeaderDescriptor">
+					 ECMA 167 4/14.10.1 
+				<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+				<element id="ImplementationAttributesLocation" label="ImplementationAttributesLocation" type="Uint32" />
+				<element id="ApplicationAttributesLocation" label="ApplicationAttributesLocation" type="Uint32" />
+			</structure>
+			<structure id="AlternatePermissionsExtendedAttribute" label="AlternatePermissionsExtendedAttribute">
+					 ECMA 167 4/14.10.4 
+				<element id="AttributeType" label="AttributeType" type="Uint32" />
+				<element id="AttributeSubtype" label="AttributeSubtype" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="byte" count="3" view="hidden" />
+				<element id="AttributeLength" label="AttributeLength" type="Uint32" />
+				<element id="OwnerIdentification" label="OwnerIdentification" type="Uint16" />
+				<element id="GroupIdentification" label="GroupIdentification" type="Uint16" />
+				<element id="Permission" label="Permission" type="Uint16" />
+			</structure>
+			<structure id="FileTimesExtendedAttribute" label="FileTimesExtendedAttribute">
+					 ECMA 167 4/14.10.5 
+				<element id="AttributeType" label="AttributeType" type="Uint32" />
+				<element id="AttributeSubtype" label="AttributeSubtype" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="byte" count="3" view="hidden" />
+				<element id="AttributeLength" label="AttributeLength" type="Uint32" />
+				<element id="DataLength" label="DataLength" type="Uint32" />
+				<element id="FileTimeExistence" label="FileTimeExistence" type="Uint32" />
+				<element id="FileTimes" label="FileTimes" type="byte" />
+			</structure>
+			<structure id="DeviceSpecificationExtendedAttribute" label="DeviceSpecificationExtendedAttribute">
+					 ECMA 167 4/14.10.7 
+				<element id="AttributeType" label="AttributeType" type="Uint32" />
+				<element id="AttributeSubtype" label="AttributeSubtype" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="byte" count="3" view="hidden" />
+				<element id="AttributeLength" label="AttributeLength" type="Uint32" />
+				<element id="ImplementationUseLength" label="ImplementationUseLength" type="Uint32" />
+				<element id="MajorDeviceIdentification" label="MajorDeviceIdentification" type="Uint32" />
+				<element id="MinorDeviceIdentification" label="MinorDeviceIdentification" type="Uint32" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="$ImplementationUseLength" />
+			</structure>
+			<structure id="ImplementationUseExtendedAttribute" label="ImplementationUseExtendedAttribute">
+					 ECMA 167 4/14.10.8 
+				<element id="AttributeType" label="AttributeType" type="Uint32" />
+				<element id="AttributeSubtype" label="AttributeSubtype" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="byte" count="3" view="hidden" />
+				<element id="AttributeLength" label="AttributeLength" type="Uint32" />
+				<element id="ImplementationUseLength" label="ImplementationUseLength" type="Uint32" />
+				<element id="ImplementationIdentifier" label="ImplementationIdentifier" type="struct" ref="EntityID" />
+				<element id="ImplementationUse" label="ImplementationUse" type="byte" count="$ImplementationUseLength" />
+			</structure>
+			<structure id="ApplicationUseExtendedAttribute" label="ApplicationUseExtendedAttribute">
+					 ECMA 167 4/14.10.9 
+				<element id="AttributeType" label="AttributeType" type="Uint32">
+					 = 65536 
+				</element>
+				<element id="AttributeSubtype" label="AttributeSubtype" type="Uint8" />
+				<element id="Reserved" label="Reserved" type="byte" count="3" view="hidden" />
+				<element id="AttributeLength" label="AttributeLength" type="Uint32" />
+				<element id="ApplicationUseLength" label="ApplicationUseLength" type="Uint32" />
+				<element id="ApplicationIdentifier" label="ApplicationIdentifier" type="struct" ref="EntityID" />
+				<element id="ApplicationUse" label="ApplicationUse" type="byte" count="$ApplicationUseLength" />
+			</structure>
+
+
+			<macro id="checktag">
+				<code type="bool-expr">
+					function CheckTag (tagid as Integer) as Boolean
+						dim v as Integer = ElemInt("tag.DescriptorVersion")
+						return ElemInt("tag.TagIdentifier")=tagid and (v=2 or v=3) and ElemInt("tag.TagLocation")=CurrentBlockNumber and (Data_ByteSum(ElemOfs("tag"),4)+Data_ByteSum(ElemOfs("tag")+5,11)) mod 256=ElemInt("tag.TagChecksum")
+					end function
+					CheckTag ($1)
+				</code>
+			</macro>
+
+			<template id="FileSetDescriptor">
+				<match kind="content">
+					<use-macro ref="checktag" args="256" />
+				</match>
+				<structure ref="FileSetDescriptor" />
+			</template>
+
+			<template id="PartitionHeaderDescriptor">
+				<structure ref="PartitionHeaderDescriptor" />
+			</template>
+
+			<template id="FID sequence">
+				<match kind="content">
+					<code type="bool-expr">
+						function CheckTag (tagid as Integer) as Boolean
+							dim v as Integer = ElemInt("tag.DescriptorVersion")
+							return ElemInt("tag.TagIdentifier")=tagid and (v=2 or v=3) and ElemInt("tag.TagLocation")=CurrentBlockNumber and (Data_ByteSum(ElemOfs("tag"),4)+Data_ByteSum(ElemOfs("tag")+5,11)) mod 256=ElemInt("tag.TagChecksum")
+						end function
+						SetStruct "FileIdentifierDescriptor", CurrentBlockOffset
+						CheckTag (257)
+					</code>
+				</match>
+				<structure ref="FID-sequence" />
+			</template>
+
+			<template id="FileEntry">
+				<match kind="content">
+					<use-macro ref="checktag" args="261" />
+				</match>
+				<structure ref="FileEntry" />
+			</template>
+
+			<template id="ExtendedFileEntry">
+				<match kind="content">
+					<use-macro ref="checktag" args="266" />
+				</match>
+				<structure ref="ExtendedFileEntry" />
+			</template>
+
+			<template id="UnallocatedSpaceEntry">
+				<match kind="content">
+					<use-macro ref="checktag" args="263" />
+				</match>
+				<structure ref="UnallocatedSpaceEntry" />
+			</template>
+
+			<template id="SpaceBitmap">
+				<match kind="content">
+					<use-macro ref="checktag" args="264" />
+				</match>
+				<structure ref="SpaceBitmap" />
+			</template>
+
+			<template id="AllocationExtentDescriptor">
+				<structure ref="AllocationExtentDescriptor" />
+			</template>
+
+			<template id="PathComponent">
+				<structure ref="PathComponent" />
+			</template>
+
+			<template id="LogicalVolumeHeaderDesc">
+				<structure ref="LogicalVolumeHeaderDesc" />
+			</template>
+
+			<template id="ExtendedAttributeHeaderDescriptor">
+				<match kind="content">
+					<use-macro ref="checktag" args="262" />
+				</match>
+				<structure ref="ExtendedAttributeHeaderDescriptor" />
+			</template>
+
+			<template id="AlternatePermissionsExtendedAttribute">
+				<structure ref="AlternatePermissionsExtendedAttribute" />
+			</template>
+
+			<template id="FileTimesExtendedAttribute">
+				<structure ref="FileTimesExtendedAttribute" />
+			</template>
+
+			<template id="DeviceSpecificationExtendedAttribute">
+				<structure ref="DeviceSpecificationExtendedAttribute" />
+			</template>
+
+			<template id="ImplementationUseExtendedAttribute">
+				<structure ref="ImplementationUseExtendedAttribute" />
+			</template>
+
+			<template id="ApplicationUseExtendedAttribute">
+				<structure ref="ApplicationUseExtendedAttribute" />
+			</template>
+
+			<template id="avdp" label="AVDP">
+				<match kind="location">
+					<code type="bool-expr">
+						CurrentBlockNumber=256 or CurrentBlockNumber=LastBlockNumber or CurrentBlockNumber=LastBlockNumber-256
+					</code>
+				</match>
+				<match kind="content">
+					<use-macro ref="checktag" args="2" />
+				</match>
+				<structure>
+						ECMA 167 3/10.2 
+					<element id="tag" label="DescriptorTag" type="struct" ref="tag" />
+					<element id="mvds" label="MainVolumeDescriptorSequenceExtent" type="struct" ref="extent_ad">
+						<link>
+							!!! missing
+						</link>
+					</element>
+					<element id="rvds" label="ReserveVolumeDescriptorSequenceExtent" type="struct" ref="extent_ad">
+						<link>
+							!!! missing
+						</link>
+					</element>
+					<element id="Reserved" label="Reserved" type="skip" count="480" view="hidden" />
+				</structure>
+			</template>
+
+			<namespace id="vds">
+				<match kind="location">
+					<code type="bool-expr">
+						not HasProp("@BlockCount") or CurrentBlockNumber&gt;=PropInt("@StartBlock") and CurrentBlockNumber&lt;PropInt("@StartBlock")+PropInt("@BlockCount")
+					</code>
+				</match>
+
+				<template id="pvd" label="PrimaryVolumeDescriptor">
+					<match kind="content">
+						<use-macro ref="checktag" args="1" />
+					</match>
+					<structure ref="PrimaryVolumeDescriptor" />
+				</template>
+
+				<template id="iuvd">
+					<match kind="content">
+						<use-macro ref="checktag" args="4" />
+					</match>
+					<structure ref="ImpUseVolumeDescriptor" />
+				</template>
+
+				<template id="pd">
+					<match kind="content">
+						<use-macro ref="checktag" args="5" />
+					</match>
+					<structure ref="PartitionDescriptor" />
+				</template>
+
+				<template id="lvd">
+					<match kind="content">
+						<use-macro ref="checktag" args="6" />
+					</match>
+					<structure ref="LogicalVolumeDescriptor" />
+				</template>
+
+				<template id="uad">
+					<match kind="content">
+						<use-macro ref="checktag" args="7" />
+					</match>
+					<structure ref="UnallocatedSpaceDesc" />
+				</template>
+
+				<template id="lvid">
+					<match kind="content">
+						<use-macro ref="checktag" args="9" />
+					</match>
+					<structure ref="LogicalVolumeIntegrityDesc" />
+				</template>
+
+				<template id="td" label="Terminating Descriptor">
+					<match kind="content">
+						<use-macro ref="checktag" args="8" />
+					</match>
+					<structure>
+						<element type="struct" ref="tag"/>
+					</structure>
+				</template>
+			</namespace>
+
+			<macro id="extent-to-range">
+				<readBlock>
+					<code type="int-expr">PropInt("avdp-blknum")</code>
+				</readBlock>
+				<setTemplate name="avdp" />
+				<add-property name="@StartBlock">
+					<code type="int-expr">ElemInt("$1.loc")</code>
+				</add-property>
+				<add-property name="@BlockCount">
+					<code type="int-expr">ElemInt("$1.len") / Container_BlockSize</code>
+				</add-property>
+			</macro>
+
+			<context id="disk" label="UDF Disk" forTypes="">	<!-- empty types mean the global space, e.g. disk -->
+
+				<code type="global">
+					function valid_avdp(blknum as Int64) as Boolean
+						if Container_ReadBlock(blknum) then
+							SetTemplate("avdp")
+							if IsValidTemplate() then
+								PropInt("avdp-blknum") = blknum
+								return true
+							end
+						end
+					end function
+				</code>
+				
+				<validation>
+					<code type="bool-function">
+						if (LastBlockNumber > 256) and (valid_avdp(256) or LastBlockNumber > 512 and (valid_avdp(LastBlockNumber-256) or valid_avdp(LastBlockNumber))) then
+							return true
+						end
+						if Container_BlockSize &lt;> 2048 then
+							// try again with typical CD/DVD blocksize
+							Container_SetBlockSize 2048
+							if (LastBlockNumber > 256) and (valid_avdp(256) or valid_avdp(LastBlockNumber-256) or valid_avdp(LastBlockNumber)) then
+								return true
+							end
+						end
+					</code>
+				</validation>
+
+				<child-context type="udf_volume" label="Main VDS">
+					<code type="bool-function">
+						return valid_avdp(PropInt("avdp-blknum"))
+					</code>
+					<use-macro ref="extent-to-range" args="mvds" />
+				</child-context>
+				<child-context type="udf_volume" label="Reserve VDS">
+					<code type="bool-function">
+						return valid_avdp(PropInt("avdp-blknum"))
+					</code>
+					<use-macro ref="extent-to-range" args="rvds" />
+				</child-context>
+
+			</context>
+
+			<context id="vds" label="Volume Descriptor Sequence" forTypes="udf_volume">
+
+				<validation>
+					<code type="bool-function" include="context-support">
+						//
+						// look for partitions defined by this VDS
+						//
+						dim startBlk as Integer = PropInt("@StartBlock")
+						dim lastBlk as Integer = startBlk + PropInt("@BlockCount") - 1
+						dim mainpnum, metapnum, virtpnum, sparedpnum as Integer
+						dim partnum() as Integer
+						dim start() as Integer
+						dim count() as Integer
+						// look for PD and LVD in the VDS
+						for blknum as Integer = startBlk to lastBlk
+							if Container_ReadBlock(blknum) then
+								SetTemplate("vds.pd")
+								if IsValidTemplate() then
+									partnum.Append ElemInt("PartitionNumber")
+									// this is not entirely correct - only the PD instance with the highest
+									// "VolumeDescriptorSequenceNumber" for the same partnum shall be used.
+									start.Append ElemInt("PartitionStartingLocation")
+									count.Append ElemInt("PartitionLength")
+								end
+								SetTemplate("vds.lvd")
+								if IsValidTemplate() then
+									PropInt("logBlkSize") = ElemInt("LogicalBlockSize")
+									dim mapCnt as Integer = ElemInt("NumberofPartitionMaps")
+									dim mapOfs as Integer = ElemOfs("PartitionMaps")
+									for i as Integer = 1 to mapCnt
+										SetStruct("Type1PartitionMap", mapOfs)
+										if ElemInt("PartitionMapType") = 1 then
+											mainpnum = ElemInt("PartitionNumber")
+										elseif ElemInt("PartitionMapType") = 2 then
+											SetStruct("Type2PartitionMap", mapOfs)
+											dim ident as String = ElemStr("PartitionTypeIdentifier.Identifier")
+											if ident = "*UDF Metadata Partition" then
+												SetStruct("MetadataPartitionMap", mapOfs)
+												metapnum = ElemInt("PartitionNumber")
+												PropInt("meta-FE1") = ElemInt("MetadataFileLocation")
+												PropInt("meta-FE2") = ElemInt("MetadataMirrorFileLocation")
+											end
+										end
+										mapOfs = mapOfs + ElemInt("PartitionMapLength")
+									next
+								end
+							end
+						next
+						// now find the partition which equals the partition number from the LVD
+						dim found as Boolean
+						for i as Integer = 0 to start.Ubound
+							if partnum(i) = mainpnum then
+								dim extents() as Extent
+								extents.Append new Extent (start(i)*Container_BlockSize, count(i)*Container_BlockSize)
+								extents.StoreAsProp("extents")
+								found = true
+							end
+						next
+						return found
+					</code>
+				</validation>
+
+				<child-context type="udf-main-partition" label="Main Partition">
+					<code type="bool-expr"> true </code>
+					<new-container extentsProp="extents" blkSizeProp="logBlkSize" />
+					<copy-property name="meta-FE1" />
+					<copy-property name="meta-FE2" />
+				</child-context>
+
+			</context>
+
+			<context id="udf-metadata-partition" label="UDF Partition" forTypes="udf-main-partition">
+			
+				<code type="global">
+
+					class FileEntry
+						
+						protected ad_type as Integer // 0: short_ad, 1: long_ad, 3: embedded file data
+						protected thisBlkNum as Int64
+						
+						private sub Constructor ()
+							// can't call this one - need to use the other one
+						end sub
+						
+						public sub Constructor (blknum as Int64)
+							me.thisBlkNum = blknum
+							if Container_ReadBlock(blknum) then
+								SetStruct ("tag", 0)
+								if ElemInt("TagIdentifier") = 266 then
+									SetTemplate("ExtendedFileEntry")
+								else
+									SetTemplate("FileEntry")
+								end
+								if IsValid() then
+									ad_type = BitAnd (3, ElemInt("ICBTag.Flags"))
+								end
+							end
+						end sub
+						
+						function IsValid() as Boolean
+							return IsValidTemplate()
+						end function
+						
+						function AllExtents () as Extent()
+							dim extents() as Extent
+							dim ad_ofs as Integer = ElemOfs("ExtendedAttributes") + ElemInt("LengthofExtendedAttributes")
+							dim ad_len as Integer = ElemInt("LengthofAllocationDescriptors")
+							if ad_type = 3 then
+								// embedded file
+								extents.Append new Extent (thisBlkNum * Container_BlockSize + ad_ofs, ad_len)
+							else
+								dim ad_name as String
+								dim ad_size as Integer
+								select case ad_type
+								case 0
+									ad_name = "short_ad"
+									ad_size = 8
+								case 1
+									ad_name = "long_ad"
+									ad_size = 16
+								else
+									print "ext_ad not supported"
+								end
+								if ad_name &lt;> "" then
+									PushState()
+									while ad_len >= ad_size
+										SetStruct (ad_name, ad_ofs)
+										dim elen as Integer = BitAnd (ElemInt("ExtentLength"), &amp;H3FFFFFFF)
+										dim eloc as Int64
+										if ad_size = 8 then
+											eloc = ElemInt("ExtentPosition")
+										else
+											eloc = ElemInt("ExtentLocation.LogicalBlockNumber")
+										end
+										//print "loc: "+intstr(eloc) + ", " + intstr(elen)
+										extents.Append new Extent (eloc * Container_BlockSize, elen)
+										ad_ofs = ad_ofs + ad_size
+										ad_len = ad_len - ad_size
+									wend
+									PopState()
+								end
+							end
+							return extents
+						end function
+						
+					end class
+
+				</code>
+				
+				<macro id="check-meta-FE">
+					<code type="bool-function" include="context-support">
+						if HasProp("meta-FE$1") then
+							dim blknum as Integer = PropInt("meta-FE$1")
+							dim fe as new FileEntry(blknum)
+							if fe.IsValid() then
+								dim extents() as Extent
+								extents = fe.AllExtents()
+								extents.StoreAsProp("extents")
+								return true
+							end
+						end
+					</code>
+					<new-container extentsProp="extents" blkSizeProp="logBlkSize" />
+				</macro>
+				
+				<child-context type="udf-metadata-partition" label="Metadata Partition">
+					<use-macro ref="check-meta-FE" args="1" />
+				</child-context>
+
+				<child-context type="udf-metadata-partition" label="Metadata Mirror Partition">
+					<use-macro ref="check-meta-FE" args="2" />
+				</child-context>
+
+			</context>
+
+			<context id="metadata" label="Metadata Partition" forTypes="udf-metadata-partition">
+			</context>
+
+
+		</endianness>
+	</namespace>
+
+	<namespace id="flashvideo" label="Flash Video" >
+
+		<endianness type="big-endian">
+
+			<structure id="amf-double" label="AMF Double" >
+				<element id="tag" label="tag" type="UInt8" />
+				<element id="value" label="value" type="Double" />
+				<summary>
+					<code type="str-function">
+						return ElemStr("value")
+					</code> 
+				</summary>
+			</structure>
+
+			<structure id="amf-boolean" label="AMF Boolean" >
+				<element id="tag" label="tag" type="UInt8" />
+				<element id="value" label="value" type="UInt8" />
+				<summary>
+					<code type="str-function">
+						return ElemStr("value")
+					</code> 
+				</summary>
+			</structure>
+
+			<structure id="amf-string" label="AMF String" >
+				<element id="tag" label="tag" type="UInt8" />
+				<element id="value" label="value" type="p2string" />
+				<summary>
+					<code type="str-function">
+						return ElemStr("value")
+					</code> 
+				</summary>
+			</structure>
+
+			<structure id="amf-kvp" label="AMF Key-Value pair" >
+				<element id="key" label="key" type="p2string" />
+				<element id="value" label="value" type="struct" ref="amf-data" />
+				<summary>
+					<code type="str-function">
+						return ElemStr("key")+": "+ElemStr("value")
+					</code> 
+				</summary>
+			</structure>
+
+			<select id="amf-kvp-switch">
+				<element id="" type="struct" ref="amf-kvp">
+					<match>
+						<code type="bool-expr"> Data_int16(0) &gt; 0 or Data_int8(2) &lt;&gt; 9 </code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="amf-kv-sequence" label="AMF Key-Value array" >
+				<element id="kvp" label="values" type="select" ref="amf-kvp-switch" count="*" />
+				<element id="null" label="0" type="UInt16" />
+				<element id="nine" label="9" type="UInt8" />
+			</structure>
+
+			<structure id="amf-object" label="AMF Object" >
+				<element id="tag" label="tag" type="UInt8" />
+				<element id="kva" label="values" type="struct" ref="amf-kv-sequence" />
+			</structure>
+
+			<structure id="amf-mixed-array" label="AMF Mixed Array" >
+				<element id="tag" label="tag" type="UInt8" />
+				<element id="cnt" label="size" type="UInt32" />
+				<element id="kva" label="values" type="struct" ref="amf-kv-sequence" />
+			</structure>
+
+			<structure id="amf-array" label="AMF Array" >
+				<element id="tag" label="tag" type="UInt8" />
+				<element id="cnt" label="size" type="UInt32" />
+				<element id="values" label="values" type="struct" ref="amf-data" count="$cnt" />
+			</structure>
+
+			<structure id="amf-date" label="AMF Date" >
+				<element id="tag" label="tag" type="UInt8" />
+				<element id="v1" label="v1" type="Double" />
+				<element id="v2" label="v2" type="Int16" />
+			</structure>
+
+			<select id="amf-switch">
+				<element id="" type="struct" ref="amf-double">
+					<match>
+						<code type="bool-expr"> Data_int8(0) = 0 </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="amf-boolean">
+					<match>
+						<code type="bool-expr"> Data_int8(0) = 1 </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="amf-string">
+					<match>
+						<code type="bool-expr"> Data_int8(0) = 2 </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="amf-object">
+					<match>
+						<code type="bool-expr"> Data_int8(0) = 3 </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="amf-mixed-array">
+					<match>
+						<code type="bool-expr"> Data_int8(0) = 8 </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="amf-array">
+					<match>
+						<code type="bool-expr"> Data_int8(0) = 10 </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="amf-date">
+					<match>
+						<code type="bool-expr"> Data_int8(0) = 11 </code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="amf-data">
+				<element id="body" label="Body" type="select" ref="amf-switch" />
+			</structure>
+
+			<structure id="amf-data-sequence">
+				<element id="body" label="Body" type="select" ref="amf-switch" count="*" />
+			</structure>
+
+			<structure id="header" label="File header">
+				<element id="sig" label="Signature" type="char" count="3" />
+				<element id="vers" label="Version" type="UInt8" />
+				<element id="flags" label="Flags" type="UInt8" />
+				<element id="size" label="Header size" type="UInt32" />
+			</structure>
+
+			<structure id="tag" label="Tag">
+				<element id="type" label="Type" type="UInt8" />
+				<element id="len" label="BodyLength" type="UInt24" />
+				<element id="time" label="TimeStamp" type="UInt24" />
+				<element id="time2" label="TimeStampExtended" type="UInt8" />
+				<element id="id" label="StreamId" type="UInt24" />
+				<element id="body" label="Body" type="struct" ref="amf-data-sequence" maxsize="$len" />
+			</structure>
+
+			<structure id="filedata">
+				<element id="header" type="struct" ref="header" />
+				<element id="stream0" label="PreviousTagSize" type="UInt32" />
+				<element id="tag" type="struct" ref="tag" />
+				<element id="stream1" label="PreviousTagSize" type="UInt32" />
+			</structure>
+
+			<template id="flv" label="File" >
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("header.sig") = "FLV" and ElemInt("header.vers") = 1 and ElemInt("header.size") = 9
+					</code>
+				</match>
+				<structure ref="filedata" />
+			</template>
+
+		</endianness>
+
+	</namespace>
+
+	<namespace id="wregf" label="Windows Registry File" >
+
+		<endianness type="little-endian">
+
+			<structure id="header" label="Base Block" >
+				<element id="magic" label="Magic Number" type="char" count="4" >"regf"</element>
+				<element id="seq1" label="Sequence Number 1" type="uint32" />
+				<element id="seq1" label="Sequence Number 1" type="uint32" />
+				<element id="modt" label="Modification Time" type="uint64" />
+				<element id="vers1" label="Major Version" type="uint32" />
+				<element id="vers2" label="Minor Version" type="uint32" />
+				<element id="unk1" label="Unknown (Type?)" type="uint32" />
+				<element id="unk2" label="Unknown (Format?)" type="uint32" />
+				<element id="keyOfs" label="Ptr to First Key" type="uint32" view="format=hex" />
+				<element id="lastHBIN" label="Ptr to last HBIN" type="uint32" view="format=hex" />
+				<element id="one" label="Unknown (always 1)" type="uint32" />
+				<element id="hname" label="Hive File Name(?)" type="UTF16le" count="32" />
+				<element id="unk4" label="Unknown" type="GUID" />
+				<element id="unk5" label="Unknown" type="GUID" />
+				<element id="unk6" label="Unknown (flags?)" type="uint32" />
+				<element id="unk7" label="Unknown" type="GUID" />
+				<element id="unk8" label="Unknown" type="uint32" />
+				<element id="res1" label="Reserved" type="uint8" count="340" />
+				<element id="chks" label="Checksum" type="uint32" />
+				<element id="res2" label="Reserved" type="uint8" count="3528" />
+				<element id="unk9" label="Unknown" type="GUID" />
+				<element id="unk10" label="Unknown" type="GUID" />
+				<element id="unk11" label="Unknown" type="GUID" />
+				<element id="unk12" label="Unknown" type="uint32" />
+				<element id="unk13" label="Unknown" type="uint32" />
+			</structure>
+
+			<structure id="sk-rec" label="Security Record" >
+				<element id="magic" label="Magic Number" type="char" count="2" >"sk"</element>
+				<element id="unk1" label="Unknown" type="uint16" />
+				<element id="prev" label="Ptr to prev rec" type="uint32" view="format=hex" />
+				<element id="next" label="Ptr to next rec" type="uint32" view="format=hex" />
+				<element id="refcnt" label="Ref count" type="uint32" />
+				<element id="recsize" label="SK record size" type="uint32" />
+				<element id="rec" label="SK record" type="uint8" count="$recsize" />
+			</structure>
+
+			<structure id="nk-rec" label="Key Record" >
+				<element id="magic" label="Magic Number" type="char" count="2" >"nk"</element>
+				<element id="flags" label="Flags" type="uint16" />
+				<element id="modt" label="Modification Time" type="uint64" />
+				<element id="unk1" label="Unknown" type="uint32" />
+				<element id="parOfs" label="Ptr to Parent" type="uint32" view="format=hex" />
+				<element id="keyCnt1" label="Cnt of subkeys (stable)" type="uint32" />
+				<element id="keyCnt2" label="Cnt of subkeys (volatile)" type="uint32" />
+				<element id="keyOfs1" label="Ptr to subkeys (stable)" type="uint32" view="format=hex" />
+				<element id="keyOfs2" label="Ptr to subkeys (volatile)" type="uint32" view="format=hex" />
+				<element id="valCnt" label="Cnt of values" type="uint32" />
+				<element id="valOfs" label="Ptr to value list" type="uint32" view="format=hex" />
+				<element id="skOfs" label="Ptr to SK rec" type="uint32" view="format=hex" />
+				<element id="clsOfs" label="Ptr to class name" type="uint32" view="format=hex" />
+				<element id="unk2" label="Unknown" type="uint32" count="5" />
+				<element id="keylen" label="Key name length" type="uint16" />
+				<element id="clslen" label="Class name length" type="uint16" />
+				<element id="name" label="Key name" type="char" count="$keylen" />
+				<summary>
+					<code type="str-expr">
+						"Key: "+ElemStr("name")
+					</code>
+				</summary>
+			</structure>
+
+			<structure id="lflh-elem">
+				<element id="ptr" label="Ptr" type="uint32" view="format=hex" />
+				<element id="hash" label="Hash" type="uint32" />
+			</structure>
+
+			<structure id="rili-elem">
+				<element id="ptr" label="Ptr" type="uint32" view="format=hex" />
+			</structure>
+
+			<structure id="lf-rec" label="LF Record" >
+				<element id="magic" label="Magic Number" type="char" count="2" >"lf"</element>
+				<element id="cnt" label="Elem Count" type="uint16" />
+				<element id="elem" label="Elements" type="struct" ref="lflh-elem" count="$cnt" />
+			</structure>
+
+			<structure id="lh-rec" label="LH Record" >
+				<element id="magic" label="Magic Number" type="char" count="2" >"lh"</element>
+				<element id="cnt" label="Elem Count" type="uint16" />
+				<element id="elem" label="Elements" type="struct" ref="lflh-elem" count="$cnt" />
+			</structure>
+
+			<structure id="ri-rec" label="RI Record" >
+				<element id="magic" label="Magic Number" type="char" count="2" >"ri"</element>
+				<element id="cnt" label="Elem Count" type="uint16" />
+				<element id="elem" label="Elements" type="struct" ref="rili-elem" count="$cnt" />
+			</structure>
+
+			<structure id="li-rec" label="LI Record" >
+				<element id="magic" label="Magic Number" type="char" count="2" >"li"</element>
+				<element id="cnt" label="Elem Count" type="uint16" />
+				<element id="elem" label="Elements" type="struct" ref="rili-elem" count="$cnt" />
+			</structure>
+
+			<structure id="vk-rec" label="Value Record" >
+				<element id="magic" label="Magic Number" type="char" count="2" >"vk"</element>
+				<element id="nlen" label="Name Length" type="uint16" />
+				<element id="dlen" label="Data Length" type="uint32" />
+				<element id="dptr" label="Ptr to Data" type="uint32" view="format=hex" />
+				<element id="type" label="Type" type="uint32" />
+				<element id="flags" label="Flags" type="uint16" />
+				<element id="unk1" label="Unknown" type="uint16" />
+				<element id="name" label="Name" type="char" count="$nlen" />
+				<summary>
+					<code type="str-expr">
+						"Value: "+ElemStr("name")
+					</code>
+				</summary>
+			</structure>
+
+			<structure id="generic-rec" label="Generic Record" >
+				<element id="data" label="Bytes" type="uint8" count="*" />
+				<summary>
+					<code type="str-expr">
+						// let's try to show the data as ASCII text
+						"Data: "+ReplaceAll (Data_string(0,CurrentStructSize), Chr(0), "")
+					</code>
+				</summary>
+			</structure>
+
+			<select id="record-switch">
+				<element id="" type="struct" ref="sk-rec" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_string(0,2) = "sk" </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="nk-rec" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_string(0,2) = "nk" </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="lf-rec" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_string(0,2) = "lf" </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="lh-rec" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_string(0,2) = "lh" </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="ri-rec" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_string(0,2) = "ri" </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="li-rec" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_string(0,2) = "li" </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="vk-rec" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_string(0,2) = "vk" </code>
+					</match>
+				</element>
+				<element id="" type="struct" ref="generic-rec" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_uint16(0) &gt; 0 </code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="record" label="Record">
+				<element id="" type="select" ref="record-switch" />
+			</structure>
+
+			<structure id="cell" label="Hive Cell" >
+				<element id="size" label="Cell Size" type="int32" view="hidden" />
+				<element id="data" label="Content" type="struct" ref="record" size="AbsInt(ElemInt(&quot;size&quot;))-4" view="collapsed" />
+			</structure>
+
+			<structure id="hivehdr" label="Hive Header" >
+				<element id="magic" label="Magic Number" type="char" count="4" >"hbin"</element>
+				<element id="owndist" label="Distance from first HBIN" type="uint32" />
+				<element id="size" label="Hive Size" type="uint32" />
+				<element id="unk1" label="Unknown" type="uint8" count="16" />
+				<element id="next" label="Ofs to Next Hive" type="uint32" />
+			</structure>
+
+			<structure id="hive" label="Hive" >
+				<element id="hdr" type="struct" ref="hivehdr" />
+				<element id="cells" type="struct" ref="cell" count="*" />
+			</structure>
+
+			<template id="regf" label="Registry File" >
+				<structure ref="header" />
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("magic") = "regf" and ElemInt("vers1") = 1 and ElemInt("one") = 1
+					</code>
+				</match>
+			</template>
+
+			<template id="hbin" label="Registry Hive" context="wregf.file">
+				<structure ref="hive" />
+				<match kind="content">
+					<code type="bool-expr">
+						ElemStr("hdr.magic") = "hbin"
+					</code>
+				</match>
+			</template>
+
+			<context id="file" label="File" forTypes="">	<!-- empty types mean the global space, e.g. disk -->
+				<validation>
+					<code type="bool-function">
+						SetTemplate("regf")
+						if IsValidTemplate() then
+							PropInt("@BlockSize") = 4096
+							return true
+						end
+					</code>
+				</validation>
+			</context>
+
+		</endianness>
+
+	</namespace>
+
+	<namespace id="zip" label="PKZip File" >
+
+		<endianness type="little-endian">
+
+			<structure id="localfileheader" label="Local File Header" >
+				<element id="sig" label="signature" type="uint32" view="format=hex" >0x04034b50</element>
+				<element id="minversion" label="version needed to extract" type="uint16" view="format=hex" />
+				<element id="flags" label="bit flags" type="uint16" view="format=hex" />
+				<element id="compr" label="compression method" type="uint16" />
+				<element id="time" label="last mod time" type="uint16" view="format=hex" />
+				<element id="date" label="last mod date" type="uint16" view="format=hex" />
+				<element id="crc" label="crc-32" type="uint32" view="format=hex" />
+				<element id="csize" label="compressed size" type="uint32" view="format=dec" />
+				<element id="usize" label="uncompressed size" type="uint32" view="format=dec" />
+				<element id="fnlen" label="name length" type="uint16" />
+				<element id="extlen" label="extra field length" type="uint16" />
+				<element id="name" label="name" type="char" count="$fnlen" view="collapsed" />
+				<element id="extra" label="extra field" type="byte" count="$extlen" view="collapsed" />
+				<element id="file" label="file data" type="byte" count="$csize" view="collapsed" />
+				<summary>
+					<code type="str-expr">
+						"Name: "+ElemStr("name")
+					</code>
+				</summary>
+			</structure>
+
+			<select id="record-switch">
+				<element id="" type="struct" ref="localfileheader" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_uint32(0) = &amp;h04034b50 </code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="dirheader" label="Dir File Header" >
+				<element id="sig" label="signature" type="uint32" view="format=hex" >0x02014b50</element>
+				<element id="version" label="version made by" type="uint16" view="format=hex" />
+				<element id="minversion" label="version needed to extract" type="uint16" view="format=hex" />
+				<element id="flags" label="bit flags" type="uint16" view="format=hex" />
+				<element id="compr" label="compression method" type="uint16" />
+				<element id="time" label="last mod time" type="uint16" view="format=hex" />
+				<element id="date" label="last mod date" type="uint16" view="format=hex" />
+				<element id="crc" label="crc-32" type="uint32" view="format=hex" />
+				<element id="csize" label="compressed size" type="uint32" view="format=dec" />
+				<element id="usize" label="uncompressed size" type="uint32" view="format=dec" />
+				<element id="fnlen" label="name length" type="uint16" />
+				<element id="extlen" label="extra field length" type="uint16" />
+				<element id="cmtlen" label="comment length" type="uint16" />
+				<element id="disknum" label="disk number start" type="uint16" />
+				<element id="intattr" label="internal attributes" type="uint16" view="format=hex" />
+				<element id="extattr" label="external attributes" type="uint32" view="format=hex" />
+				<element id="recofs" label="local file header offset" type="uint32" view="format=dec" />
+				<element id="name" label="name" type="char" count="$fnlen" view="collapsed" />
+				<element id="extra" label="extra field" type="byte" count="$extlen" view="collapsed" />
+				<element id="comment" label="comment" type="byte" count="$cmtlen" view="collapsed" />
+				<summary>
+					<code type="str-expr">
+						"Name: "+ElemStr("name")
+					</code>
+				</summary>
+			</structure>
+
+			<select id="dir-switch">
+				<element id="" type="struct" ref="dirheader" view="collapsed">
+					<match>
+						<code type="bool-expr"> Data_uint32(0) = &amp;h02014b50 </code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="file-pool" label="File Entries">
+				<element id="" type="select" ref="record-switch" count="*" />
+				<element id="" type="select" ref="dir-switch" count="*" />
+			</structure>
+
+			<template id="files" label="File Entries" context="zip.zipfile">
+				<structure ref="file-pool" />
+				<match kind="content">
+					<code type="bool-expr">
+						Data_uint32(0) = &amp;h04034b50
+					</code>
+				</match>
+			</template>
+
+			<context id="zipfile" label="Zip File" forTypes="">	<!-- empty types mean the global space, e.g. disk -->
+				<validation>
+					<code type="bool-function">
+						SetTemplate("files")
+						if IsValidTemplate() then
+							return true
+						end
+					</code>
+				</validation>
+			</context>
+
+		</endianness>
+
+	</namespace>
+
+	<namespace id="sqlite" label="SQLite" >
+
+		<!-- authors: Stefan Huy, huy@me.com, http://stefanhuy.com; Thomas Tempelmann, tempelmann@gmail.com -->
+
+		<endianness type="big-endian">
+
+			<code type="include" id="sort-support">
+				<![CDATA[
+					Module SortHelper
+
+						Private Function sort_partition(p0 as Integer, r as Integer, a() as Integer) As Integer
+							dim p, j, mid as Integer
+							mid = (p0 + r) / 2
+							p = p0 - 1
+							j = r + 1
+							do
+								do
+									j = j - 1
+								loop until j = mid or a(j) < a(mid)
+								do
+									p = p + 1
+								loop until p = mid or a(p) > a(mid)
+								if p < j then
+									if p > mid then
+										mid = p
+									end
+									if j < mid then
+										mid = j
+									end
+									dim tmp as integer = a(p)
+									a(p) = a(j)
+									a(j) = tmp
+									if p = mid then
+										mid = j
+										j = j + 1
+									elseif j = mid then
+										mid = p
+										p = p - 1
+									end
+								else
+									if mid = r then
+										return mid-1
+									else
+										return mid
+									end
+								end
+							loop
+						End Function
+
+						Sub Sort(a() as Integer, firstIdx as Integer = 0, lastIdx as Integer = -1)
+							dim f, q as Integer
+							if lastIdx < 0 then lastIdx = a.ubound
+							f = firstIdx
+							while f < lastIdx
+								q = sort_partition(f, lastIdx, a)
+								Sort(a, f, q)
+								f = q + 1
+							wend
+						End Sub
+
+					End Module
+				]]>
+			</code>
+
+			<structure id="sqlite.header" label="SQLite 3 Header">	
+				<element id="hdr" label="file header string" type="cstring" count="16"/>
+				<element id="pgsize" label="database page size" type="UInt16"/>
+				<element label="file format write version" type="byte"/>
+				<element label="file format read version" type="byte"/>
+				<element id="resbytes" label="size of reserved space" type="byte"/>
+				<element label="maximum embedded payload fraction" type="byte"/>
+				<element label="minimum embedded payload fraction" type="byte"/>
+				<element label="leaf payload fraction" type="byte"/>
+				<element label="file change counter" type="UInt32"/>
+				<element label="size of the database file in pages" type="UInt32"/>
+				<element label="page number of the first freelist trunk page" type="UInt32" link="*" />
+				<element label="total number of freelist pages" type="UInt32" />
+				<element label="schema cookie" type="UInt32"/>
+				<element label="schema format number" type="UInt32"/>
+				<element label="default page cache size" type="UInt32" />
+				<element label="page number of the largest root b-tree page" type="UInt32" link="*"/>
+				<element label="database text encoding" type="UInt32"/>
+				<element label="user version" type="UInt32"/>
+				<element label="incremental-vacuum mode flag" type="UInt32" />
+				<element label="application ID" type="UInt32" />
+				<element label="RESERVED" type="skip" count="20"/>
+				<element label="version-valid-for number" type="UInt32"/>
+				<element label="SQLITE_VERSION_NUMBER" type="UInt32"/>
+			</structure>
+
+			<select id="interior-extension-switch">
+				<!-- "right-most pointer" only appears in "interior" pages -->
+				<code type="bool-function">
+					PropInt("pagetype") = ElemInt("type")
+					return true
+				</code>
+				<element label="right-most pointer" type="UInt32" link="*">
+					<match>
+						<code type="bool-function">
+							dim t as Integer = PropInt("pagetype")
+							return t = 2 or t = 5
+						</code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="page.header" label="B-tree Page Header">
+				<element id="type" label="node type" type="byte"/>
+				<element id="freeofs" label="offset to first freeblock" type="UInt16" view="hex" />
+				<element id="cellcnt" label="number of cells" type="UInt16"/>
+				<element id="cellofs" label="offset to cell area" type="UInt16" view="hex" />
+				<element id="numfree" label="fragmented free bytes" type="byte"/>
+				<element id="rmptr" type="select" ref="interior-extension-switch" /> <!-- this elem is optional -->
+				<summary> <code type="str-function">
+					dim type as Integer = PropInt("pagetype")
+					if type = 2 then return "interior index"
+					if type = 5 then return "interior table"
+					if type = 10 then return "leaf index"
+					if type = 13 then return "leaf table"
+					return "--illegal type--"
+				</code> </summary>
+			</structure>
+
+			<select id="cellptr-switch">
+				<code type="bool-function" include="sort-support">
+					dim ofs as Integer = Data_uint16(0)
+					dim cellcnt as Integer = ElemInt("pagehdr.cellcnt")
+					'debuglog "#"+str(SequenceNumber)+", ofs: "+str(ofs)+", cellcnt: "+str(cellcnt)
+					if SequenceNumber &lt; cellcnt then
+						// create a pseudo array of offsets into the cells
+						PropInt("cellofs-"+Str(SequenceNumber)) = ofs
+					elseif SequenceNumber = cellcnt then
+						// we've reached the end of the cell ptr list - sort the cells
+						dim offsets() as Integer
+						for i as integer = 0 to SequenceNumber-1
+							offsets.Append PropInt("cellofs-"+Str(i))
+						next
+						Sort (offsets)
+						for i as integer = 0 to SequenceNumber-1
+							PropInt("cellofs-"+Str(i)) = offsets(i)
+						next
+						PropInt("cellMaxIdx") = SequenceNumber-1
+					end
+					return ofs > 0
+				</code>
+				<element label="cell pointer" type="uint16" view="hex">
+					<match>
+						<code type="bool-expr">true</code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="cell pointer array" label="cell pointer array">
+				<element label="cellptr" type="select" ref="cellptr-switch" count="*" maxsize="ElemInt(''pagehdr.cellofs'')-CurrentBlockOffset" />
+			</structure>
+
+			<code type="global">
+				<![CDATA[
+					function offsetToNextCell (structOfs as Integer) as Integer
+						dim maxidx as Integer = PropInt("cellMaxIdx")
+						for i as integer = 0 to maxidx
+							dim cellofs as Integer = PropInt("cellofs-"+Str(i))
+							if cellofs > structOfs then
+								return cellofs - CurrentBlockOffset
+							end
+						next
+						return 0
+					end function
+
+					function isCellStart (ofs as Integer) as Boolean
+						dim maxidx as Integer = PropInt("cellMaxIdx")
+						for i as integer = 0 to maxidx
+							dim cellofs as Integer = PropInt("cellofs-"+Str(i))
+							if cellofs = ofs then
+								return true
+							end
+						next
+						return false
+					end function
+
+					function cellSize (payloadSize as Integer) as Integer
+						dim P as Integer = payloadSize
+						dim U as Integer = Container_BlockSize - PropInt("reserved_at_page_end")
+						if payloadSize <= (U-35) then
+							' it all fits
+						else
+							' overflow!
+							dim M as Integer = ((U-12)*32/255)-23
+							P = Min (M+((P-M)mod(U-4)), U-35)
+						end
+						return P
+					end function
+					
+					function collectRecordTypes(hdrlen as integer) as Integer
+						return hdrlen-1
+					end function
+				]]>
+			</code>
+
+			<select id="rectype-select">
+				<code type="bool-function">
+					dim reccnt as Integer, ok as Boolean
+					if SequenceNumber = 0 then
+						'debuglog "rectype-select start @"+str(CurrentStructStart)
+					else
+						reccnt = PropInt("recCount")
+					end
+					if CurrentElemOffset &lt; ElemInt("hdrlen") then
+						reccnt = reccnt + 1
+						ok = true
+					end
+					PropInt("recCount") = reccnt
+					dim len, code as Integer
+					code = Data_varint64(0, len)
+					PropInt("recType-"+Str(SequenceNumber)) = code
+					return ok
+				</code>
+				<element id="v" type="varint64">
+					<match>
+						<code type="bool-expr">true</code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="recordHeader">
+				<element id="hdrlen" label="length of header" type="varint64" />
+				<element id="types" label="record types" type="select" ref="rectype-select" count="*" maxsize="collectRecordTypes(ElemInt(''hdrlen''))" />
+			</structure>
+
+			<select id="record-select" info="info2" >
+				<code type="bool-function">
+					dim code as Integer = PropInt("recType-"+Str(SequenceNumber))
+					PropInt("recordCode") = code
+					return true
+				</code>
+				<element type="skip" count="0" info="NULL">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 0</code>
+					</match>
+				</element>
+				<element type="sint8">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 1</code>
+					</match>
+				</element>
+				<element type="sint16">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 2</code>
+					</match>
+				</element>
+				<element type="sint24">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 3</code>
+					</match>
+				</element>
+				<element type="sint32">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 4</code>
+					</match>
+				</element>
+				<element type="sint48">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 5</code>
+					</match>
+				</element>
+				<element type="sint64">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 6</code>
+					</match>
+				</element>
+				<element type="double">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 7</code>
+					</match>
+				</element>
+				<element type="skip" count="0" info="0">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 8</code>
+					</match>
+				</element>
+				<element type="skip" count="0" info="1">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 9</code>
+					</match>
+				</element>
+				<element type="skip" count="0" info="••invalid••">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") = 10 or PropInt("recordCode") = 11</code>
+					</match>
+				</element>
+				<element type="skip" count="(PropInt(''recordCode'')-12)/2" info="BLOB">
+					<match>
+						<code type="bool-expr">PropInt("recordCode") mod 2 = 0</code>
+					</match>
+					<summary> <code type="str-function">
+						return Data_string(0, (PropInt("recordCode")-12)/2)
+					</code> </summary>
+				</element>
+				<element type="string" count="(PropInt(''recordCode'')-13)/2" info="Text">
+					<match>
+						<code type="bool-expr">true</code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="record">
+				<element id="hdr" label="header" type="struct" ref="recordHeader" view="collapsed" />
+				<element label="values" type="select" ref="record-select" count="PropInt(''recCount'')" info="info" />
+			</structure>
+
+			<structure id="tableLeafCell">
+				<element id="payloadSize" label="payload size" type="varint64" />
+				<element label="rowid" type="varint64" />
+				<element label="payload" type="struct" ref="record" size="cellSize(ElemInt(''payloadSize''))" maxsize="offsetToNextCell(CurrentStructStart)" view="collapsed" />
+			</structure>
+
+			<structure id="tableInteriorCell">
+				<element label="page number of left child" type="UInt32" link="*" />
+				<element label="integer key" type="varint64" />
+			</structure>
+
+			<structure id="indexLeafCell">
+				<element id="payloadSize" label="payload size" type="varint64" />
+				<element label="payload" type="skip" count="offsetToNextCell(CurrentStructStart)" view="collapsed" />
+			</structure>
+
+			<structure id="indexInteriorCell">
+				<element label="page number of left child" type="UInt32" link="*" />
+				<element id="payloadSize" label="payload size" type="varint64" />
+				<element label="payload" type="skip" count="offsetToNextCell(CurrentStructStart)" view="collapsed" />
+			</structure>
+
+			<select id="btreeCell">
+				<element type="struct" ref="tableLeafCell">
+					<match>
+						<code type="bool-function">
+							return PropInt("pagetype") = 13
+						</code>
+					</match>
+				</element>
+				<element type="struct" ref="tableInteriorCell">
+					<match>
+						<code type="bool-function">
+							return PropInt("pagetype") = 5
+						</code>
+					</match>
+				</element>
+				<element type="struct" ref="indexLeafCell">
+					<match>
+						<code type="bool-function">
+							return PropInt("pagetype") = 10
+						</code>
+					</match>
+				</element>
+				<element type="struct" ref="indexInteriorCell">
+					<match>
+						<code type="bool-function">
+							return PropInt("pagetype") = 2
+						</code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="freeCell">
+				<element label="free" type="skip" count="offsetToNextCell(CurrentStructStart)" />
+			</structure>
+
+			<select id="cell-switch">
+				<code type="bool-function">
+					if SequenceNumber = 0 then
+						PropInt("added_cells") = 0
+					end
+					if PropInt("added_cells") >= ElemInt("pagehdr.cellcnt") then
+						return false
+					end
+					return true
+				</code>
+				<element type="select" ref="btreeCell">
+					<match>
+						<code type="bool-function">
+							if isCellStart(CurrentBlockOffset) then
+								PropInt("added_cells") = PropInt("added_cells") + 1
+								return true
+							end
+						</code>
+					</match>
+				</element>
+				<element type="struct" ref="freeCell">
+					<match>
+						<code type="bool-expr">true</code>
+					</match>
+				</element>
+			</select>
+
+			<structure id="otherpage">
+				<element id="pagehdr" type="struct" ref="page.header" view="expanded" />
+				<element id="cellptrs" type="struct" ref="cell pointer array" />
+				<element id="free" label="unallocated space" type="skip" count="ElemInt(''pagehdr.cellofs'')-CurrentBlockOffset" >
+					<summary> <code type="str-function">
+						// see if all bytes are zero
+						dim n as integer = ElemSize("free")-1
+						if n &lt; 0 then return "empty"
+						for i as integer = 0 to n
+							if Data_uint8(i) &lt;> 0 then
+								return "has non-zero bytes"
+							end
+						next
+						return "all zero"
+					</code> </summary>
+				</element>
+				<element id="cells" label="cell" type="select" ref="cell-switch" count="*" />
+				<element id="end" label="end of data" type="skip" count="Container_BlockSize - CurrentBlockOffset" >
+					<summary> <code type="str-function">
+						// see if all bytes are zero
+						dim n as integer = ElemSize("end")-1
+						if n &lt; 0 then return "empty"
+						for i as integer = 0 to n
+							if Data_uint8(i) &lt;> 0 then
+								return "has non-zero bytes"
+							end
+						next
+						return "all zero"
+					</code> </summary>
+				</element>
+			</structure>
+
+			<structure id="firstpage">
+				<element id="filehdr" type="struct" ref="sqlite.header" />
+				
+				<!-- identical to "otherpage": -->
+				<element id="pagehdr" type="struct" ref="page.header" view="expanded" />
+				<element id="cellptrs" type="struct" ref="cell pointer array" />
+				<element id="free" label="unallocated space" type="skip" count="ElemInt(''pagehdr.cellofs'')-CurrentBlockOffset" >
+					<summary> <code type="str-function">
+						// see if all bytes are zero
+						dim n as integer = ElemSize("free")-1
+						if n &lt; 0 then return "empty"
+						for i as integer = 0 to n
+							if Data_uint8(i) &lt;> 0 then
+								return "has non-zero bytes"
+							end
+						next
+						return "all zero"
+					</code> </summary>
+				</element>
+				<element id="cells" label="cell" type="select" ref="cell-switch" count="*" />
+				<element id="end" label="end of data" type="skip" count="Container_BlockSize - CurrentBlockOffset" >
+					<summary> <code type="str-function">
+						// see if all bytes are zero
+						dim n as integer = ElemSize("end")-1
+						if n &lt; 0 then return "empty"
+						for i as integer = 0 to n
+							if Data_uint8(i) &lt;> 0 then
+								return "has non-zero bytes"
+							end
+						next
+						return "all zero"
+					</code> </summary>
+				</element>
+			</structure>
+
+			<template id="file.header" label="file header" context="sqlite.file">
+				<structure ref="firstpage" />
+				<match kind="content">
+					<code type="bool-function">
+						if CurrentPhysByteOffset = 0 and ElemStr("filehdr.hdr") = "SQLite format 3" then
+							PropInt("reserved_at_page_end") = ElemInt("filehdr.resbytes")
+							PropInt("isFirstpage") = 1
+							return true
+						end
+					</code>
+				</match>
+			</template>
+
+			<template id="page" label="B-tree page" context="sqlite.file">
+				<structure ref="otherpage" />
+				<match kind="location">
+					<code type="bool-function">
+						if not HasProp("reserved_at_page_end") then
+							PushState()
+							if Container_ReadBlock(0) then
+								SetTemplate("file.header")
+								if not IsValidTemplate() then // sets "reserved_at_page_end" property
+									return false
+								end
+							end
+							PopState()
+						end
+						PropInt("isFirstpage") = 0
+						dim firstByte as Integer = ElemInt("pagehdr.type")
+						return CurrentPhysByteOffset > 0 and (firstByte = 2 or firstByte = 5 or firstByte = 10 or firstByte = 13)
+					</code>
+				</match>
+			</template>
+
+			<context id="file" label="SQLite3 file" forTypes="">	<!-- empty types mean the global space, e.g. disk -->
+				<validation>
+					<code type="bool-function">
+						if Container_ReadBlock(0) then
+							SetTemplate("file.header")
+							if IsValidTemplate() then
+								dim pageSize as Integer = ElemInt("filehdr.pgsize")
+								Container_SetBlockSize pageSize
+								return true
+							end
+						end
+					</code>
+				</validation>
+			</context>
+
+		</endianness>
+
+	</namespace>
+
+</templates>

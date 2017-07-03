@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist SYSTEM
+"file://localhost/System/Library/DTDs/PropertyList.dtd">
+<plist version="0.9">
+<dict>
+   <key>CFBundleExecutable</key>
+   <string>iBored</string>
+   <key>CFBundleName</key>
+   <string>iBored</string>
+   <key>CFBundleIdentifier</key>
+   <string>org.tempel.ibored</string>
+   <key>CFBundleInfoDictionaryVersion</key>
+   <string>6.0</string>
+   <key>CFBundleVersion</key>
+   <string>1.1.19.3.0</string>
+   <key>CFBundleDevelopmentRegion</key>
+   <string>en</string>
+   <key>CFBundlePackageType</key>
+   <string>APPL</string>
+   <key>CFBundleSignature</key>
+   <string>rohP</string>
+   <key>CFBundleGetInfoString</key>
+   <string></string>
+   <key>CFBundleShortVersionString</key>
+   <string>1.1.19</string>
+   <key>CFBundleIconFile</key>
+   <string>iBored.icns</string>
+<key>LSMinimumSystemVersion</key>
+<string>10.6.0</string>
+   <key>CFBundleDocumentTypes</key>
+   <array>
+      <dict>
+         <key>CFBundleTypeName</key>
+         <string>any_drop</string>
+         <key>CFBundleTypeIconFile</key>
+         <string>AnyDrop.icns</string>
+         <key>CFBundleTypeOSTypes</key>
+         <array>
+            <string>****</string>
+         </array>
+         <key>CFBundleTypeExtensions</key>
+         <array>
+         </array>
+         <key>CFBundleTypeRole</key>
+         <string>None</string>
+      </dict>
+      <dict>
+         <key>CFBundleTypeName</key>
+         <string>disk image</string>
+         <key>CFBundleTypeOSTypes</key>
+         <array>
+            <string>dimg</string>
+         </array>
+         <key>CFBundleTypeExtensions</key>
+         <array>
+            <string>dimg</string>
+         </array>
+         <key>CFBundleTypeRole</key>
+         <string>None</string>
+      </dict>
+   </array>
+</dict>
+</plist>
